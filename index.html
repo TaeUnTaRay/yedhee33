@@ -87,6 +87,8 @@
       animation: fadeIn 0.5s ease;
     }
     .api-warning a { color: #fbbf24; font-weight: 600; text-decoration: none; }
+    /* แสดงคำเตือน API เฉพาะ admin (เพราะลิงก์ไปหน้า config) */
+    body:not(.is-admin) .api-warning { display: none !important; }
 
     /* Menu Cards */
     .menu-cards {
@@ -116,6 +118,7 @@
     .btn-menu:nth-child(1) { animation-delay: 0.1s; }
     .btn-menu:nth-child(2) { animation-delay: 0.2s; }
     .btn-menu:nth-child(3) { animation-delay: 0.3s; }
+    .btn-menu:nth-child(4) { animation-delay: 0.4s; }
 
     .btn-menu:hover {
       transform: translateY(-4px);
@@ -147,6 +150,74 @@
       transition: transform 0.3s ease, color 0.3s ease;
     }
     .btn-menu:hover .card-arrow { transform: translateX(4px); color: #94a3b8; }
+
+    /* Admin items (hidden until login) */
+    .btn-config { display: none; }
+    body.is-admin .btn-config { display: flex; }
+
+    /* Login button */
+    .btn-login { cursor: pointer; font-family: inherit; width: 100%; }
+    .btn-login:hover { box-shadow: 0 8px 30px rgba(245,158,11,0.3); border-color: rgba(245,158,11,0.5); }
+    .btn-login .card-icon { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 15px rgba(245,158,11,0.4); }
+    body.is-admin .btn-login { display: none; }
+
+    .btn-logout {
+      display: none;
+      margin-top: 4px;
+      background: none;
+      border: none;
+      color: #64748b;
+      font-family: inherit;
+      font-size: 0.85em;
+      cursor: pointer;
+      text-decoration: underline;
+      align-self: center;
+    }
+    body.is-admin .btn-logout { display: block; }
+
+    /* Login modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      width: 100%; max-width: 340px;
+      background: #1a1a3e;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 18px;
+      padding: 24px;
+      animation: fadeInUp 0.3s ease;
+    }
+    .modal-box h2 { font-size: 1.15em; margin-bottom: 14px; color: #f1f5f9; }
+    .modal-box input {
+      width: 100%;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.06);
+      color: #e2e8f0;
+      font-family: inherit;
+      font-size: 1em;
+      outline: none;
+    }
+    .modal-box input:focus { border-color: #6366f1; }
+    .modal-error { color: #f87171; font-size: 0.85em; min-height: 1.2em; margin-bottom: 8px; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions button {
+      flex: 1; padding: 11px;
+      border-radius: 10px; border: none;
+      font-family: inherit; font-size: 0.95em; font-weight: 600;
+      cursor: pointer;
+    }
+    .modal-cancel { background: rgba(255,255,255,0.08); color: #94a3b8; }
+    .modal-submit { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; }
 
     /* Animations */
     @keyframes fadeIn    { from { opacity: 0; }                      to { opacity: 1; } }
@@ -186,6 +257,7 @@
       <span class="card-arrow">›</span>
     </a>
 
+    <!-- ปุ่มตั้งค่า: ซ่อนไว้ แสดงเมื่อ login เป็น admin -->
     <a href="config.html" class="btn-menu btn-config">
       <div class="card-icon">⚙️</div>
       <div class="card-text">
@@ -194,12 +266,125 @@
       </div>
       <span class="card-arrow">›</span>
     </a>
+
+    <!-- ปุ่ม Login -->
+    <button type="button" class="btn-menu btn-login" id="btnLogin">
+      <div class="card-icon">🔐</div>
+      <div class="card-text">
+        <div class="card-title">เข้าสู่ระบบ Admin</div>
+        <div class="card-desc">สำหรับผู้ดูแลระบบเท่านั้น</div>
+      </div>
+      <span class="card-arrow">›</span>
+    </button>
+    <button type="button" class="btn-logout" id="btnLogout">ออกจากระบบ</button>
+  </div>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal-box">
+      <h2>🔐 เข้าสู่ระบบ Admin</h2>
+      <input type="text" id="loginUser" placeholder="ชื่อผู้ใช้" autocomplete="username">
+      <input type="password" id="loginPass" placeholder="รหัสผ่าน" autocomplete="current-password">
+      <input type="url" id="loginApi" placeholder="API URL (Apps Script Web App)" style="display:none">
+      <div class="modal-error" id="loginError"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" id="loginCancel">ยกเลิก</button>
+        <button type="button" class="modal-submit" id="loginSubmit">เข้าสู่ระบบ</button>
+      </div>
+    </div>
   </div>
 
   <script>
     if (!localStorage.getItem('gasApiUrl') && typeof GAS_API_URL === 'undefined') {
       document.getElementById('apiWarning').style.display = 'block';
     }
+
+    // ===== Admin Login (ตรวจสอบรหัสผ่านที่ Google Apps Script) =====
+    const modal = document.getElementById('loginModal');
+    const errEl = document.getElementById('loginError');
+    const apiInput = document.getElementById('loginApi');
+    const submitBtn = document.getElementById('loginSubmit');
+
+    function getApiUrl() {
+      return localStorage.getItem('gasApiUrl') ||
+             (typeof GAS_API_URL !== 'undefined' ? GAS_API_URL : '');
+    }
+
+    function applyAdminState() {
+      document.body.classList.toggle('is-admin', !!sessionStorage.getItem('adminToken'));
+    }
+
+    function openModal() {
+      errEl.textContent = '';
+      document.getElementById('loginUser').value = '';
+      document.getElementById('loginPass').value = '';
+      // ถ้ายังไม่เคยตั้งค่า API ให้กรอก URL ได้ตรงนี้
+      apiInput.style.display = getApiUrl() ? 'none' : 'block';
+      modal.classList.add('show');
+      document.getElementById('loginUser').focus();
+    }
+    function closeModal() { modal.classList.remove('show'); }
+
+    async function doLogin() {
+      if (submitBtn.disabled) return;
+      const u = document.getElementById('loginUser').value.trim();
+      const p = document.getElementById('loginPass').value;
+      const url = getApiUrl() || apiInput.value.trim();
+
+      if (!url) { errEl.textContent = 'กรุณากรอก API URL'; return; }
+      if (!u || !p) { errEl.textContent = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'กำลังตรวจสอบ...';
+      errEl.textContent = '';
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'adminLogin', username: u, password: p })
+        });
+        const data = await res.json();
+
+        if (data.success && data.token) {
+          if (!getApiUrl()) localStorage.setItem('gasApiUrl', url);
+          sessionStorage.setItem('adminToken', data.token);
+          applyAdminState();
+          closeModal();
+        } else {
+          errEl.textContent = data.error || 'เข้าสู่ระบบไม่สำเร็จ';
+        }
+      } catch (err) {
+        errEl.textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบ API URL';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'เข้าสู่ระบบ';
+      }
+    }
+
+    document.getElementById('btnLogin').addEventListener('click', openModal);
+    document.getElementById('loginCancel').addEventListener('click', closeModal);
+    submitBtn.addEventListener('click', doLogin);
+    document.getElementById('btnLogout').addEventListener('click', () => {
+      const token = sessionStorage.getItem('adminToken');
+      const url = getApiUrl();
+      if (token && url) {
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'adminLogout', token: token })
+        }).catch(() => {});
+      }
+      sessionStorage.removeItem('adminToken');
+      applyAdminState();
+    });
+    modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && modal.classList.contains('show')) doLogin();
+      if (e.key === 'Escape') closeModal();
+    });
+
+    applyAdminState();
   </script>
 </body>
 </html>
