@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>เงินเดือน (Admin)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script src="js/api-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/plugin/buddhistEra.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/locale/th.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Sarabun', sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(160deg, #0f0f23 0%, #0d1b2a 60%, #0a0f1e 100%);
+      color: #e2e8f0;
+      padding: 20px 14px 60px;
+    }
+    .wrap { width: 100%; max-width: 980px; margin: 0 auto; }
+
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .back-btn {
+      color: #94a3b8; text-decoration: none; font-size: 0.85em;
+      padding: 6px 12px; border-radius: 20px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    }
+    .back-btn:hover { color: #e2e8f0; }
+    h2 { font-size: 1.15em; font-weight: 600; color: #bae6fd; }
+    .spacer { width: 80px; }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px; padding: 16px; margin-bottom: 16px;
+    }
+    .card h3 { font-size: 1em; margin-bottom: 10px; color: #f1f5f9; }
+    .hint { font-size: 0.78em; color: #64748b; margin-top: 6px; line-height: 1.5; }
+
+    /* Month bar */
+    .month-bar { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .month-bar button, .btn-sm {
+      font-family: inherit; cursor: pointer; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07); color: #e2e8f0;
+      padding: 8px 14px; font-size: 0.95em;
+    }
+    .month-bar button:hover, .btn-sm:hover { background: rgba(255,255,255,0.14); }
+    #monthLabel { min-width: 170px; text-align: center; font-size: 1.15em; font-weight: 700; color: #f1f5f9; }
+
+    #msg { text-align: center; min-height: 22px; margin-bottom: 10px; font-size: 0.9em; }
+    .err { color: #f87171; } .ok { color: #34d399; } .muted { color: #94a3b8; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86em; }
+    .table-wrap table { min-width: 760px; }
+    th, td { padding: 9px 8px; text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: #94a3b8; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.12); }
+    tbody tr { cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    tbody tr:hover { background: rgba(255,255,255,0.06); }
+    tbody tr.sel { background: rgba(14,165,233,0.15); }
+    tfoot td { font-weight: 700; border-top: 1px solid rgba(255,255,255,0.2); color: #f1f5f9; }
+    .net { color: #34d399; font-weight: 700; }
+    .warn-badge {
+      font-size: 0.75em; color: #fcd34d; background: rgba(245,158,11,0.15);
+      border: 1px solid rgba(245,158,11,0.35); border-radius: 8px; padding: 1px 6px; margin-left: 6px;
+    }
+
+    /* Detail */
+    .detail-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+    .detail-col { flex: 1 1 320px; min-width: 0; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px; }
+    label.f { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; color: #94a3b8; }
+    input[type=number], input[type=text] {
+      padding: 9px 11px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
+      color: #e2e8f0; font-family: inherit; font-size: 1em; outline: none; width: 100%;
+    }
+    input:focus { border-color: #0ea5e9; }
+    .chk { display: flex; align-items: center; gap: 8px; font-size: 0.9em; color: #cbd5e1; }
+    .btn-primary {
+      font-family: inherit; cursor: pointer; border: none; border-radius: 10px;
+      background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff;
+      padding: 10px 20px; font-size: 0.95em; font-weight: 600;
+    }
+    .btn-primary:disabled { opacity: 0.5; cursor: wait; }
+
+    /* Calendar */
+    .cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-head div { text-align: center; font-size: 0.75em; color: #64748b; padding: 4px 0; }
+    .cell {
+      min-height: 54px; border-radius: 10px; padding: 4px 6px;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.8em; display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .cell.empty { background: none; border: none; }
+    .cell .d { font-weight: 600; }
+    .cell .sub { font-size: 0.82em; opacity: 0.9; }
+    .cell.work   { background: rgba(16,185,129,0.25); border-color: rgba(16,185,129,0.6); cursor: pointer; }
+    .cell.absent { background: rgba(239,68,68,0.25);  border-color: rgba(239,68,68,0.6);  cursor: pointer; }
+    .cell.leave  { background: rgba(245,158,11,0.25); border-color: rgba(245,158,11,0.6); cursor: pointer; }
+    .cell.off    { opacity: 0.45; }
+    .cell.auto   { border-style: dashed; }
+    .cell.today  { outline: 2px solid #38bdf8; }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.8em; color: #94a3b8; margin: 10px 0 4px; }
+    .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+    #dayInfo { font-size: 0.85em; color: #cbd5e1; min-height: 38px; margin-top: 6px; line-height: 1.5; }
+
+    /* Payslip */
+    .slip { width: 100%; min-width: 0; table-layout: fixed; font-size: 0.9em; }
+    .slip td:first-child { word-break: break-word; }
+    .slip td:last-child { width: 38%; }
+    .slip td { padding: 6px 2px; white-space: normal; }
+    .slip td:last-child { text-align: right; }
+    .slip .sec td { color: #94a3b8; font-size: 0.8em; padding-top: 12px; }
+    .slip .tot td { border-top: 1px solid rgba(255,255,255,0.2); font-weight: 700; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin-bottom: 8px; }
+    .stat { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 8px; text-align: center; }
+    .stat b { display: block; font-size: 1.2em; color: #f1f5f9; }
+    .stat span { font-size: 0.72em; color: #94a3b8; }
+
+    details.card summary { cursor: pointer; font-weight: 600; color: #f1f5f9; }
+    .wd-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <a href="index.html" class="back-btn">← กลับ</a>
+    <h2>💰 เงินเดือน</h2>
+    <div class="spacer"></div>
+  </div>
+
+  <div id="gate" class="card" style="display:none; text-align:center">
+    🔐 หน้านี้สำหรับ Admin เท่านั้น<br>
+    <span class="hint">กรุณา<a href="index.html" style="color:#38bdf8">กลับหน้าแรกเพื่อเข้าสู่ระบบ Admin</a>ก่อน</span>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="month-bar">
+      <button id="prevM">‹</button>
+      <div id="monthLabel"></div>
+      <button id="nextM">›</button>
+      <button id="thisM">เดือนนี้</button>
+    </div>
+    <div id="msg" class="muted"></div>
+
+    <div class="card">
+      <h3>สรุปทั้งเดือน <span class="hint">(แตะที่ชื่อเพื่อดูปฏิทินและปรับอัตราค่าจ้าง)</span></h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>พนักงาน</th><th>วันทำงาน</th><th>ชม.รวม</th><th>OT ชม.</th>
+              <th>ลา</th><th>ขาด</th><th>รายได้รวม</th><th>ประกันสังคม</th><th>ภาษี</th><th>สุทธิ</th>
+            </tr>
+          </thead>
+          <tbody id="sumBody"></tbody>
+          <tfoot id="sumFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" id="detail" style="display:none">
+      <h3 id="detailName"></h3>
+
+      <div class="form-grid">
+        <label class="f">ค่าแรงรายวัน (บาท/วัน)
+          <input type="number" id="fDaily" min="0" step="1">
+        </label>
+        <label class="f">ค่า OT (บาท/ชม.) — เว้น 0 = อัตโนมัติ
+          <input type="number" id="fOt" min="0" step="0.01">
+        </label>
+        <label class="f">ลดหย่อนภาษีเพิ่มเติม (บาท/ปี)
+          <input type="number" id="fExtra" min="0" step="1">
+        </label>
+      </div>
+      <label class="chk"><input type="checkbox" id="fSso"> หักประกันสังคม (ผู้ประกันตน ม.33)</label>
+      <div style="margin-top:10px">
+        <button class="btn-primary" id="btnSaveRate">💾 บันทึกอัตราค่าจ้าง</button>
+      </div>
+      <div class="hint" id="otHint"></div>
+
+      <div class="detail-grid" style="margin-top:18px">
+        <div class="detail-col">
+          <div class="cal-head" id="calHead"></div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="legend">
+            <span><i style="background:#10b981"></i>มาทำงาน</span>
+            <span><i style="background:#ef4444"></i>ขาด</span>
+            <span><i style="background:#f59e0b"></i>ลา</span>
+            <span><i style="background:#475569"></i>วันหยุด</span>
+          </div>
+          <div id="dayInfo">แตะวันที่ในปฏิทินเพื่อดูรายละเอียด</div>
+        </div>
+
+        <div class="detail-col">
+          <div class="stats" id="stats"></div>
+          <table class="slip" id="slip"></table>
+          <div class="hint">ภาษีเป็นการประมาณการหัก ณ ที่จ่าย (คิดจากรายได้เดือนนี้ × 12 หักค่าใช้จ่าย 50% ไม่เกิน 100,000 ลดหย่อนส่วนตัว 60,000 และประกันสังคม) ควรให้นักบัญชีตรวจสอบก่อนใช้จ่ายจริง</div>
+        </div>
+      </div>
+    </div>
+
+    <details class="card">
+      <summary>⚙️ ตั้งค่าการคำนวณ</summary>
+      <div class="form-grid" style="margin-top:12px">
+        <label class="f">ชั่วโมงทำงานปกติ/วัน (เกินจากนี้เป็น OT)<input type="number" id="sStd" step="0.5" min="1"></label>
+        <label class="f">หักพักกลางวัน (ชม.)<input type="number" id="sBreak" step="0.25" min="0"></label>
+        <label class="f">ตัวคูณ OT (เมื่อไม่ตั้ง OT รายคน)<input type="number" id="sOtm" step="0.1" min="0"></label>
+        <label class="f">อัตราประกันสังคม (%)<input type="number" id="sSsoRate" step="0.1" min="0"></label>
+        <label class="f">ฐานค่าจ้างขั้นต่ำ ประกันสังคม<input type="number" id="sSsoMin" min="0"></label>
+        <label class="f">ฐานค่าจ้างขั้นสูง ประกันสังคม<input type="number" id="sSsoMax" min="0"></label>
+      </div>
+      <div class="hint" style="margin:0 0 8px">วันทำงานประจำสัปดาห์ (วันที่ไม่มีบันทึกในวันทำงานที่ผ่านมาแล้วจะนับเป็นขาดอัตโนมัติ)</div>
+      <div class="wd-row" id="wdRow"></div>
+      <label class="chk"><input type="checkbox" id="sPaidLeave"> จ่ายค่าจ้างสำหรับวันลา (ไม่รวมขาดงาน)</label>
+      <div style="margin-top:12px"><button class="btn-primary" id="btnSaveSet">💾 บันทึกการตั้งค่า</button></div>
+    </details>
+  </div>
+</div>
+
+<script>
+  dayjs.extend(dayjs_plugin_buddhistEra);
+  dayjs.locale('th');
+
+  const API_URL = localStorage.getItem('gasApiUrl') || (typeof GAS_API_URL !== 'undefined' ? GAS_API_URL : '');
+  const WD_NAMES = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+  let month = dayjs().startOf('month');
+  let data = null;
+  let selected = null;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const money = n => Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const num = n => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 });
+
+  function setMsg(text, cls) { const m = $('msg'); m.textContent = text || ''; m.className = cls || 'muted'; }
+
+  async function api(payload) {
+    const token = sessionStorage.getItem('adminToken');
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ token }, payload)) });
+    const out = await res.json();
+    if (out.error === 'Unauthorized') {
+      sessionStorage.removeItem('adminToken');
+      showGate();
+      throw new Error('เซสชัน Admin หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+    }
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+
+  function showGate() { $('app').style.display = 'none'; $('gate').style.display = 'block'; }
+
+  // ===== Init =====
+  if (!sessionStorage.getItem('adminToken') || !API_URL) {
+    showGate();
+  } else {
+    $('app').style.display = 'block';
+    buildWeekdayRow();
+    load();
+  }
+
+  $('prevM').onclick = () => { month = month.subtract(1, 'month'); load(); };
+  $('nextM').onclick = () => { month = month.add(1, 'month'); load(); };
+  $('thisM').onclick = () => { month = dayjs().startOf('month'); load(); };
+
+  async function load() {
+    $('monthLabel').textContent = month.format('MMMM BBBB');
+    setMsg('กำลังโหลดข้อมูล...', 'muted');
+    try {
+      data = await api({ action: 'getPayroll', month: month.format('YYYY-MM') });
+      setMsg('');
+      fillSettings(data.settings);
+      renderSummary();
+      if (selected && data.employees.some(e => e.name === selected)) renderDetail();
+      else { selected = null; $('detail').style.display = 'none'; }
+    } catch (e) { setMsg('❌ ' + e.message, 'err'); }
+  }
+
+  // ===== Summary =====
+  function renderSummary() {
+    const body = $('sumBody');
+    if (!data.employees.length) {
+      body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:20px">ยังไม่มีพนักงานในระบบ</td></tr>';
+      $('sumFoot').innerHTML = '';
+      return;
+    }
+    const tot = { gross: 0, sso: 0, tax: 0, net: 0 };
+    body.innerHTML = data.employees.map(e => {
+      tot.gross += e.pay.gross; tot.sso += e.pay.sso; tot.tax += e.pay.tax; tot.net += e.pay.net;
+      const warn = e.dailyRate <= 0 ? '<span class="warn-badge">ยังไม่ตั้งอัตรา</span>' : '';
+      return `<tr data-name="${esc(e.name)}" class="${e.name === selected ? 'sel' : ''}">
+        <td>${esc(e.name)}${warn}</td>
+        <td>${e.sum.workDays}</td><td>${num(e.sum.hours)}</td><td>${num(e.sum.otHours)}</td>
+        <td>${e.sum.leaveDays}</td><td>${e.sum.absentDays}</td>
+        <td>${money(e.pay.gross)}</td><td>${money(e.pay.sso)}</td><td>${money(e.pay.tax)}</td>
+        <td class="net">${money(e.pay.net)}</td></tr>`;
+    }).join('');
+    $('sumFoot').innerHTML = `<tr><td colspan="6">รวมทั้งหมด</td><td>${money(tot.gross)}</td>
+      <td>${money(tot.sso)}</td><td>${money(tot.tax)}</td><td class="net">${money(tot.net)}</td></tr>`;
+    body.querySelectorAll('tr[data-name]').forEach(tr => {
+      tr.onclick = () => { selected = tr.dataset.name; renderSummary(); renderDetail(); $('detail').scrollIntoView({ behavior: 'smooth' }); };
+    });
+  }
+
+  // ===== Detail =====
+  function curEmp() { return data.employees.find(e => e.name === selected); }
+
+  function renderDetail() {
+    const e = curEmp();
+    if (!e) return;
+    $('detail').style.display = 'block';
+    $('detailName').textContent = '👤 ' + e.name;
+    $('fDaily').value = e.dailyRate || '';
+    $('fOt').value = e.otRate || '';
+    $('fExtra').value = e.extra || '';
+    $('fSso').checked = e.sso;
+    $('otHint').textContent = 'อัตรา OT ที่ใช้คำนวณอยู่: ' + money(e.otRateEff) + ' บาท/ชม.' + (e.otRate > 0 ? ' (ตั้งเอง)' : ' (คำนวณอัตโนมัติ)');
+    renderCalendar(e);
+    renderSlip(e);
+    $('dayInfo').textContent = 'แตะวันที่ในปฏิทินเพื่อดูรายละเอียด';
+  }
+
+  function renderCalendar(e) {
+    $('calHead').innerHTML = WD_NAMES.map(n => `<div>${n}</div>`).join('');
+    const lead = month.startOf('month').day();
+    const dim = month.daysInMonth();
+    const today = data.today;
+    let html = '';
+    for (let i = 0; i < lead; i++) html += '<div class="cell empty"></div>';
+    for (let d = 1; d <= dim; d++) {
+      const iso = month.date(d).format('YYYY-MM-DD');
+      const day = e.days[iso] || { s: '' };
+      const cls = ['cell', day.s, day.auto ? 'auto' : '', iso === today ? 'today' : ''].join(' ');
+      let sub = '';
+      if (day.s === 'work') sub = num(day.hours) + ' ชม.' + (day.ot > 0 ? ' +OT' : '');
+      else if (day.s === 'leave') sub = 'ลา';
+      else if (day.s === 'absent') sub = 'ขาด';
+      html += `<div class="${cls}" data-iso="${iso}"><span class="d">${d}</span><span class="sub">${sub}</span></div>`;
+    }
+    $('calGrid').innerHTML = html;
+    $('calGrid').querySelectorAll('.cell[data-iso]').forEach(c => { c.onclick = () => showDay(e, c.dataset.iso); });
+  }
+
+  function showDay(e, iso) {
+    const day = e.days[iso] || {};
+    const label = dayjs(iso).format('dddd D MMMM BBBB');
+    let t = '';
+    if (day.s === 'work') {
+      t = `🟢 มาทำงาน — เข้า ${day.in}` + (day.out ? ` ออก ${day.out}` : ' (ไม่มีเวลาออก นับ ' + num(day.hours) + ' ชม.)') +
+          ` • รวม ${num(day.hours)} ชม.` + (day.ot > 0 ? ` • OT ${num(day.ot)} ชม.` : '');
+    } else if (day.s === 'leave') t = '🟡 ' + (day.note || 'ลา');
+    else if (day.s === 'absent') t = '🔴 ' + (day.note || 'ขาด');
+    else if (day.s === 'off') t = '⚪ วันหยุด';
+    else t = 'ยังไม่มีบันทึก';
+    $('dayInfo').textContent = label + ' : ' + t;
+  }
+
+  function renderSlip(e) {
+    const s = e.sum, p = e.pay;
+    const lb = s.leaveBy;
+    const leaveDetail = s.leaveDays ? ` (ป่วย ${lb['ลาป่วย']} / กิจ ${lb['ลากิจ']} / พักร้อน ${lb['ลาพักร้อน']})` : '';
+    $('stats').innerHTML = `
+      <div class="stat"><b>${s.workDays}</b><span>วันทำงาน</span></div>
+      <div class="stat"><b>${num(s.hours)}</b><span>ชั่วโมงรวม</span></div>
+      <div class="stat"><b>${num(s.otHours)}</b><span>OT (ชม.)</span></div>
+      <div class="stat"><b>${s.leaveDays}</b><span>วันลา</span></div>
+      <div class="stat"><b>${s.absentDays}</b><span>วันขาด</span></div>`;
+    const noOut = s.noOutDays ? `<tr><td colspan="2" class="hint">⚠️ มี ${s.noOutDays} วันที่ไม่มีเวลาออกงาน (นับชั่วโมงปกติ ไม่มี OT)</td></tr>` : '';
+    $('slip').innerHTML = `
+      <tr class="sec"><td colspan="2">รายได้</td></tr>
+      <tr><td>ค่าแรง ${s.workDays} วัน × ${money(e.dailyRate)}</td><td>${money(p.base)}</td></tr>
+      <tr><td>OT ${num(s.otHours)} ชม. × ${money(e.otRateEff)}</td><td>${money(p.ot)}</td></tr>
+      <tr class="tot"><td>รวมรายได้</td><td>${money(p.gross)}</td></tr>
+      <tr class="sec"><td colspan="2">รายการหัก</td></tr>
+      <tr><td>ประกันสังคม${e.sso ? '' : ' (ไม่หัก)'}</td><td>-${money(p.sso)}</td></tr>
+      <tr><td>ภาษีหัก ณ ที่จ่าย (ประมาณการ)</td><td>-${money(p.tax)}</td></tr>
+      <tr class="tot"><td>เงินได้สุทธิที่จ่าย</td><td class="net">${money(p.net)}</td></tr>
+      <tr><td colspan="2" class="hint">วันลา ${s.leaveDays} วัน${leaveDetail}${data.settings.paidLeave ? ' (จ่ายค่าจ้าง)' : ' (ไม่จ่ายค่าจ้าง)'}</td></tr>
+      ${noOut}`;
+  }
+
+  // ===== Save rate =====
+  $('btnSaveRate').onclick = async () => {
+    const btn = $('btnSaveRate');
+    btn.disabled = true;
+    try {
+      const out = await api({
+        action: 'saveEmployeeRate', name: selected,
+        dailyRate: $('fDaily').value || 0, otRate: $('fOt').value || 0,
+        extra: $('fExtra').value || 0, sso: $('fSso').checked
+      });
+      setMsg('✅ ' + out.message, 'ok');
+      await load();
+      setMsg('✅ ' + out.message, 'ok');
+    } catch (e) { setMsg('❌ ' + e.message, 'err'); }
+    btn.disabled = false;
+  };
+
+  // ===== Settings =====
+  function buildWeekdayRow() {
+    $('wdRow').innerHTML = WD_NAMES.map((n, i) =>
+      `<label class="chk"><input type="checkbox" class="wd" value="${i}"> ${n}</label>`).join('');
+  }
+
+  function fillSettings(st) {
+    $('sStd').value = st.stdHours; $('sBreak').value = st.breakHours; $('sOtm').value = st.otMultiplier;
+    $('sSsoRate').value = st.ssoRate; $('sSsoMin').value = st.ssoMin; $('sSsoMax').value = st.ssoMax;
+    $('sPaidLeave').checked = !!st.paidLeave;
+    const wd = String(st.workdays).split(',');
+    document.querySelectorAll('.wd').forEach(c => { c.checked = wd.indexOf(c.value) >= 0; });
+  }
+
+  $('btnSaveSet').onclick = async () => {
+    const btn = $('btnSaveSet');
+    btn.disabled = true;
+    try {
+      const workdays = [...document.querySelectorAll('.wd')].filter(c => c.checked).map(c => c.value).join(',');
+      const out = await api({
+        action: 'savePayrollSettings',
+        settings: {
+          stdHours: $('sStd').value, breakHours: $('sBreak').value, otMultiplier: $('sOtm').value,
+          ssoRate: $('sSsoRate').value, ssoMin: $('sSsoMin').value, ssoMax: $('sSsoMax').value,
+          paidLeave: $('sPaidLeave').checked, workdays
+        }
+      });
+      await load();
+      setMsg('✅ ' + out.message, 'ok');
+    } catch (e) { setMsg('❌ ' + e.message, 'err'); }
+    btn.disabled = false;
+  };
+</script>
+</body>
+</html>
