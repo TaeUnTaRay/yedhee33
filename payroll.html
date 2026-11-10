@@ -102,6 +102,8 @@
     .cell.work   { background: rgba(16,185,129,0.25); border-color: rgba(16,185,129,0.6); cursor: pointer; }
     .cell.absent { background: rgba(239,68,68,0.25);  border-color: rgba(239,68,68,0.6);  cursor: pointer; }
     .cell.leave  { background: rgba(245,158,11,0.25); border-color: rgba(245,158,11,0.6); cursor: pointer; }
+    .cell.holiday { background: rgba(56,189,248,0.22); border-color: rgba(56,189,248,0.6); cursor: pointer; }
+    .cell.pending { border-style: dashed; }
     .cell.off    { opacity: 0.45; }
     .cell.auto   { border-style: dashed; }
     .cell.today  { outline: 2px solid #38bdf8; }
@@ -121,6 +123,33 @@
     .stat { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 8px; text-align: center; }
     .stat b { display: block; font-size: 1.2em; color: #f1f5f9; }
     .stat span { font-size: 0.72em; color: #94a3b8; }
+
+    .btn-danger {
+      font-family: inherit; cursor: pointer; border-radius: 10px; padding: 10px 16px; font-size: 0.9em;
+      border: 1px solid rgba(239,68,68,0.5); background: rgba(239,68,68,0.12); color: #fca5a5;
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.22); }
+    .btn-ok { font-family: inherit; cursor: pointer; border-radius: 8px; padding: 6px 12px; font-size: 0.85em;
+      border: 1px solid rgba(16,185,129,0.5); background: rgba(16,185,129,0.15); color: #6ee7b7; }
+    .btn-no { font-family: inherit; cursor: pointer; border-radius: 8px; padding: 6px 12px; font-size: 0.85em;
+      border: 1px solid rgba(239,68,68,0.5); background: rgba(239,68,68,0.12); color: #fca5a5; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .list-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.9em; }
+    .list-item:last-child { border-bottom: none; }
+    .pend-card { border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.07); }
+    input[type=date], input[type=time], select {
+      padding: 9px 11px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.06); color: #e2e8f0; font-family: inherit; font-size: 0.95em; outline: none;
+      color-scheme: dark;
+    }
+    select option { background: #1a1a3e; }
+    #dayEdit { margin-top: 10px; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1); }
+    #dayEdit .row { margin-bottom: 8px; }
+    .danger-zone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(239,68,68,0.3); }
+    .tag-resign { font-size: 0.72em; color: #cbd5e1; background: rgba(148,163,184,0.2);
+      border-radius: 8px; padding: 1px 6px; margin-left: 6px; }
 
     details.card summary { cursor: pointer; font-weight: 600; color: #f1f5f9; }
     .wd-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }
@@ -145,11 +174,19 @@
       <div id="monthLabel"></div>
       <button id="nextM">›</button>
       <button id="thisM">เดือนนี้</button>
+      <button id="refreshM" title="โหลดข้อมูลใหม่">🔄</button>
     </div>
     <div id="msg" class="muted"></div>
 
+    <div class="card pend-card" id="pendCard" style="display:none">
+      <h3>📝 รายการลารออนุมัติ</h3>
+      <div id="pendList"></div>
+      <div class="hint">ลาที่ยังไม่อนุมัติจะแสดงเป็นวันลา (เส้นประ) แต่ไม่จ่ายค่าจ้างวันลา ถ้าไม่อนุมัติ จะนับเป็นขาด</div>
+    </div>
+
     <div class="card">
       <h3>สรุปทั้งเดือน <span class="hint">(แตะที่ชื่อเพื่อดูปฏิทินและปรับอัตราค่าจ้าง)</span></h3>
+      <label class="chk" style="margin-bottom:8px"><input type="checkbox" id="showResigned"> แสดงพนักงานที่ลาออกแล้ว</label>
       <div class="table-wrap">
         <table>
           <thead>
@@ -178,11 +215,20 @@
           <input type="number" id="fExtra" min="0" step="1">
         </label>
       </div>
+      <div class="row" style="margin-bottom:10px">
+        <label class="f">วันที่ลาออก (วันทำงานวันสุดท้าย) — เว้นว่าง = ยังทำงานอยู่
+          <input type="date" id="fResign">
+        </label>
+      </div>
       <label class="chk"><input type="checkbox" id="fSso"> หักประกันสังคม (ผู้ประกันตน ม.33)</label>
       <div style="margin-top:10px">
-        <button class="btn-primary" id="btnSaveRate">💾 บันทึกอัตราค่าจ้าง</button>
+        <button class="btn-primary" id="btnSaveRate">💾 บันทึกข้อมูลพนักงาน</button>
       </div>
       <div class="hint" id="otHint"></div>
+      <div class="danger-zone">
+        <button class="btn-danger" id="btnDelUser">🗑️ ลบพนักงานคนนี้</button>
+        <span class="hint">พนักงานลาออกให้ตั้ง "วันที่ลาออก" ด้านบนแทน เพื่อเก็บประวัติและคิดเงินเดือนงวดสุดท้ายได้ถูกต้อง</span>
+      </div>
 
       <div class="detail-grid" style="margin-top:18px">
         <div class="detail-col">
@@ -192,9 +238,33 @@
             <span><i style="background:#10b981"></i>มาทำงาน</span>
             <span><i style="background:#ef4444"></i>ขาด</span>
             <span><i style="background:#f59e0b"></i>ลา</span>
+            <span><i style="background:#38bdf8"></i>วันหยุดนักขัตฤกษ์</span>
             <span><i style="background:#475569"></i>วันหยุด</span>
           </div>
           <div id="dayInfo">แตะวันที่ในปฏิทินเพื่อดูรายละเอียด</div>
+          <div id="dayEdit" style="display:none">
+            <div class="hint" style="margin:0 0 8px" id="deTitle"></div>
+            <div class="row">
+              <select id="deMode">
+                <option value="work">🟢 มาทำงาน</option>
+                <option value="leave">🟡 ลา</option>
+                <option value="absent">🔴 ขาดงาน</option>
+                <option value="clear">🧹 ล้างรายการของวันนี้</option>
+              </select>
+            </div>
+            <div class="row" id="deWork">
+              <label class="f">เข้า <input type="time" id="deIn"></label>
+              <label class="f">ออก <input type="time" id="deOut"></label>
+            </div>
+            <div class="hint" id="deHint" style="margin:-4px 0 8px">กะดึกที่ออกหลังเที่ยงคืน ให้ใส่เวลาออกน้อยกว่าเวลาเข้า ระบบจะนับเป็นออกวันถัดไป</div>
+            <div class="row" id="deLeave" style="display:none">
+              <select id="deKind">
+                <option>ลาป่วย</option><option>ลากิจ</option><option>ลาพักร้อน</option>
+              </select>
+            </div>
+            <div class="row"><input type="text" id="deNote" placeholder="หมายเหตุ (ไม่บังคับ)" maxlength="200"></div>
+            <button class="btn-primary" id="deSave">💾 บันทึกวันนี้</button>
+          </div>
         </div>
 
         <div class="detail-col">
@@ -204,6 +274,17 @@
         </div>
       </div>
     </div>
+
+    <details class="card">
+      <summary>🎌 วันหยุดนักขัตฤกษ์ของโรงงาน <span class="hint" id="holYear"></span></summary>
+      <div class="hint" style="margin:8px 0">กำหนดตามประกาศของโรงงาน (กฎหมายกำหนดให้มีอย่างน้อย 13 วัน/ปี รวมวันแรงงานแห่งชาติ) ลูกจ้างรายวันจะได้ค่าจ้างวันหยุด ถ้ามาทำงานจะได้เพิ่มตามอัตราในการตั้งค่า</div>
+      <div id="holList"></div>
+      <div class="row" style="margin-top:10px">
+        <input type="date" id="hDate">
+        <input type="text" id="hName" placeholder="ชื่อวันหยุด เช่น วันแรงงาน" style="flex:1; min-width:160px">
+        <button class="btn-primary" id="hAdd">➕ เพิ่ม</button>
+      </div>
+    </details>
 
     <details class="card">
       <summary>⚙️ ตั้งค่าการคำนวณ</summary>
@@ -217,7 +298,18 @@
       </div>
       <div class="hint" style="margin:0 0 8px">วันทำงานประจำสัปดาห์ (วันที่ไม่มีบันทึกในวันทำงานที่ผ่านมาแล้วจะนับเป็นขาดอัตโนมัติ)</div>
       <div class="wd-row" id="wdRow"></div>
-      <label class="chk"><input type="checkbox" id="sPaidLeave"> จ่ายค่าจ้างสำหรับวันลา (ไม่รวมขาดงาน)</label>
+      <div class="form-grid">
+        <label class="f">ทำงานวันหยุดนักขัตฤกษ์ จ่ายเพิ่ม (เท่าของค่าจ้างวันปกติ)<input type="number" id="sHolExtra" step="0.1" min="0"></label>
+        <label class="f">ทำงานวันหยุดประจำสัปดาห์ (เท่า, รายวัน)<input type="number" id="sOffMult" step="0.1" min="0"></label>
+        <label class="f">OT ในวันหยุด (เท่า)<input type="number" id="sHolOt" step="0.1" min="0"></label>
+      </div>
+      <div class="hint" style="margin:0 0 8px">กะ: ดูจากเวลาที่เข้างาน (ใส่เป็นชั่วโมง 0–24)</div>
+      <div class="form-grid">
+        <label class="f">เริ่มกะเช้า ตั้งแต่เวลา (ชม.)<input type="number" id="sMorning" step="0.5" min="0" max="24"></label>
+        <label class="f">เริ่มกะดึก ตั้งแต่เวลา (ชม.)<input type="number" id="sNight" step="0.5" min="0" max="24"></label>
+      </div>
+      <label class="chk"><input type="checkbox" id="sPaidHoliday"> จ่ายค่าจ้างวันหยุดนักขัตฤกษ์ (กรณีไม่ได้มาทำงาน)</label>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" id="sPaidLeave"> จ่ายค่าจ้างสำหรับวันลาที่อนุมัติแล้ว (ไม่รวมขาดงาน)</label>
       <div style="margin-top:12px"><button class="btn-primary" id="btnSaveSet">💾 บันทึกการตั้งค่า</button></div>
     </details>
   </div>
@@ -231,6 +323,8 @@
   const WD_NAMES = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
   let month = dayjs().startOf('month');
+  let cache = {};              // เก็บข้อมูลแต่ละเดือนไว้ในหน้า (เปลี่ยนเดือนกลับไปมาไม่ต้องรอ)
+  const CACHE_MS = 120000;
   let data = null;
   let selected = null;
 
@@ -242,6 +336,7 @@
   function setMsg(text, cls) { const m = $('msg'); m.textContent = text || ''; m.className = cls || 'muted'; }
 
   async function api(payload) {
+    if (payload.action !== 'getPayroll') cache = {};   // มีการแก้ไขข้อมูล => ล้างแคช
     const token = sessionStorage.getItem('adminToken');
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ token }, payload)) });
     const out = await res.json();
@@ -268,32 +363,108 @@
   $('prevM').onclick = () => { month = month.subtract(1, 'month'); load(); };
   $('nextM').onclick = () => { month = month.add(1, 'month'); load(); };
   $('thisM').onclick = () => { month = dayjs().startOf('month'); load(); };
+  $('refreshM').onclick = () => load(true);
 
-  async function load() {
+  async function load(force) {
+    const key = month.format('YYYY-MM');
     $('monthLabel').textContent = month.format('MMMM BBBB');
-    setMsg('กำลังโหลดข้อมูล...', 'muted');
+    const hit = cache[key];
     try {
-      data = await api({ action: 'getPayroll', month: month.format('YYYY-MM') });
+      if (!force && hit && Date.now() - hit.t < CACHE_MS) {
+        data = hit.d;
+      } else {
+        setMsg('⏳ กำลังโหลดข้อมูล...', 'muted');
+        data = await api({ action: 'getPayroll', month: key });
+        cache[key] = { d: data, t: Date.now() };
+      }
       setMsg('');
       fillSettings(data.settings);
+      renderPending();
+      renderHolidays();
       renderSummary();
-      if (selected && data.employees.some(e => e.name === selected)) renderDetail();
+      if (selected && visibleEmployees().some(e => e.name === selected)) renderDetail();
       else { selected = null; $('detail').style.display = 'none'; }
     } catch (e) { setMsg('❌ ' + e.message, 'err'); }
   }
 
+  // ===== Pending leaves =====
+  function renderPending() {
+    const list = data.pending || [];
+    $('pendCard').style.display = list.length ? 'block' : 'none';
+    $('pendList').innerHTML = list.map(p => `
+      <div class="list-item">
+        <div><b>${esc(p.name)}</b> — ${dayjs(p.date).format('D MMM BB')} <span class="muted">${esc(p.note)}</span></div>
+        <div class="row">
+          <button class="btn-ok" data-act="approve" data-name="${esc(p.name)}" data-date="${p.date}">✅ อนุมัติ</button>
+          <button class="btn-no" data-act="reject" data-name="${esc(p.name)}" data-date="${p.date}">❌ ไม่อนุมัติ</button>
+        </div>
+      </div>`).join('');
+    $('pendList').querySelectorAll('button[data-act]').forEach(b => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const out = await api({ action: 'decideLeave', name: b.dataset.name, date: b.dataset.date, decision: b.dataset.act });
+          await load();
+          setMsg('✅ ' + out.message, 'ok');
+        } catch (e) { setMsg('❌ ' + e.message, 'err'); b.disabled = false; }
+      };
+    });
+  }
+
+  // ===== Holidays =====
+  function renderHolidays() {
+    $('holYear').textContent = '(ปี ' + month.format('BBBB') + ')';
+    const list = data.holidays || [];
+    $('holList').innerHTML = list.length ? list.map(h => `
+      <div class="list-item">
+        <div>🎌 ${dayjs(h.date).format('dddd D MMMM BBBB')} — ${esc(h.name)}</div>
+        <button class="btn-no" data-date="${h.date}">🗑️ ลบ</button>
+      </div>`).join('') : '<div class="hint">ยังไม่ได้กำหนดวันหยุดของปีนี้</div>';
+    $('holList').querySelectorAll('button[data-date]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('ลบวันหยุดนี้ ?')) return;
+        try {
+          const out = await api({ action: 'deleteHoliday', date: b.dataset.date });
+          await load();
+          setMsg('✅ ' + out.message, 'ok');
+        } catch (e) { setMsg('❌ ' + e.message, 'err'); }
+      };
+    });
+  }
+
+  $('hAdd').onclick = async () => {
+    const date = $('hDate').value;
+    if (!date) return setMsg('❌ กรุณาเลือกวันที่', 'err');
+    try {
+      const out = await api({ action: 'saveHoliday', date, name: $('hName').value.trim() });
+      $('hName').value = '';
+      await load();
+      setMsg('✅ ' + out.message, 'ok');
+    } catch (e) { setMsg('❌ ' + e.message, 'err'); }
+  };
+
   // ===== Summary =====
+  function visibleEmployees() {
+    const start = month.startOf('month').format('YYYY-MM-DD');
+    const all = $('showResigned').checked;
+    return data.employees.filter(e => all || !e.resignDate || e.resignDate >= start);
+  }
+  $('showResigned').onchange = () => { if (data) { renderSummary(); if (selected && !visibleEmployees().some(e => e.name === selected)) { selected = null; $('detail').style.display = 'none'; } } };
+
   function renderSummary() {
     const body = $('sumBody');
-    if (!data.employees.length) {
+    const emps = visibleEmployees();
+    if (!emps.length) {
       body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:20px">ยังไม่มีพนักงานในระบบ</td></tr>';
       $('sumFoot').innerHTML = '';
       return;
     }
     const tot = { gross: 0, sso: 0, tax: 0, net: 0 };
-    body.innerHTML = data.employees.map(e => {
+    body.innerHTML = emps.map(e => {
       tot.gross += e.pay.gross; tot.sso += e.pay.sso; tot.tax += e.pay.tax; tot.net += e.pay.net;
-      const warn = e.dailyRate <= 0 ? '<span class="warn-badge">ยังไม่ตั้งอัตรา</span>' : '';
+      const warn = (e.dailyRate <= 0 ? '<span class="warn-badge">ยังไม่ตั้งอัตรา</span>' : '') +
+        (e.resignDate ? `<span class="tag-resign">ลาออก ${dayjs(e.resignDate).format('D MMM BB')}</span>` : '') +
+        (e.sum.pendingLeave ? `<span class="warn-badge">ลารออนุมัติ ${e.sum.pendingLeave}</span>` : '');
       return `<tr data-name="${esc(e.name)}" class="${e.name === selected ? 'sel' : ''}">
         <td>${esc(e.name)}${warn}</td>
         <td>${e.sum.workDays}</td><td>${num(e.sum.hours)}</td><td>${num(e.sum.otHours)}</td>
@@ -320,6 +491,8 @@
     $('fOt').value = e.otRate || '';
     $('fExtra').value = e.extra || '';
     $('fSso').checked = e.sso;
+    $('fResign').value = e.resignDate || '';
+    $('dayEdit').style.display = 'none';
     $('otHint').textContent = 'อัตรา OT ที่ใช้คำนวณอยู่: ' + money(e.otRateEff) + ' บาท/ชม.' + (e.otRate > 0 ? ' (ตั้งเอง)' : ' (คำนวณอัตโนมัติ)');
     renderCalendar(e);
     renderSlip(e);
@@ -336,33 +509,80 @@
     for (let d = 1; d <= dim; d++) {
       const iso = month.date(d).format('YYYY-MM-DD');
       const day = e.days[iso] || { s: '' };
-      const cls = ['cell', day.s, day.auto ? 'auto' : '', iso === today ? 'today' : ''].join(' ');
+      const cls = ['cell', day.s, day.auto ? 'auto' : '', day.pending ? 'pending' : '', iso === today ? 'today' : ''].join(' ');
       let sub = '';
-      if (day.s === 'work') sub = num(day.hours) + ' ชม.' + (day.ot > 0 ? ' +OT' : '');
-      else if (day.s === 'leave') sub = 'ลา';
+      if (day.s === 'work') sub = num(day.hours) + ' ชม.' + (day.ot > 0 ? ' +OT' : '') + (day.kind === 'holiday' ? ' 🎌' : '') + (day.shift === 'กะดึก' ? ' 🌙' : '');
+      else if (day.s === 'leave') sub = day.pending ? 'ลา?' : 'ลา';
       else if (day.s === 'absent') sub = 'ขาด';
+      else if (day.s === 'holiday') sub = '🎌';
       html += `<div class="${cls}" data-iso="${iso}"><span class="d">${d}</span><span class="sub">${sub}</span></div>`;
     }
     $('calGrid').innerHTML = html;
     $('calGrid').querySelectorAll('.cell[data-iso]').forEach(c => { c.onclick = () => showDay(e, c.dataset.iso); });
   }
 
+  let editIso = null;
+
   function showDay(e, iso) {
     const day = e.days[iso] || {};
     const label = dayjs(iso).format('dddd D MMMM BBBB');
     let t = '';
     if (day.s === 'work') {
-      t = `🟢 มาทำงาน — เข้า ${day.in}` + (day.out ? ` ออก ${day.out}` : ' (ไม่มีเวลาออก นับ ' + num(day.hours) + ' ชม.)') +
+      const kindTxt = day.kind === 'holiday' ? ' [วันหยุดนักขัตฤกษ์: ' + (day.note || '') + ']' : (day.kind === 'offday' ? ' [วันหยุดประจำสัปดาห์]' : '');
+      t = `🟢 มาทำงาน ${day.shift === 'กะดึก' ? '🌙 กะดึก' : '☀️ กะเช้า'}${kindTxt} — เข้า ${day.in}` + (day.out ? ` ออก ${day.out}${day.outNext ? ' (วันถัดไป)' : ''}` : ' (ไม่มีเวลาออก นับ ' + num(day.hours) + ' ชม.)') +
           ` • รวม ${num(day.hours)} ชม.` + (day.ot > 0 ? ` • OT ${num(day.ot)} ชม.` : '');
-    } else if (day.s === 'leave') t = '🟡 ' + (day.note || 'ลา');
+    } else if (day.s === 'leave') t = '🟡 ' + (day.note || 'ลา') + (day.pending ? ' (รออนุมัติ)' : '');
     else if (day.s === 'absent') t = '🔴 ' + (day.note || 'ขาด');
-    else if (day.s === 'off') t = '⚪ วันหยุด';
+    else if (day.s === 'holiday') t = '🎌 วันหยุดนักขัตฤกษ์: ' + (day.note || '');
+    else if (day.s === 'off') t = '⚪ ' + (day.note || 'วันหยุด');
     else t = 'ยังไม่มีบันทึก';
     $('dayInfo').textContent = label + ' : ' + t;
+
+    // แก้ไขรายการ (ไม่เปิดให้แก้วันที่หลังลาออก)
+    if (day.resigned) { $('dayEdit').style.display = 'none'; return; }
+    editIso = iso;
+    $('deTitle').textContent = '✏️ แก้ไข/ลบรายการของ ' + e.name + ' วันที่ ' + dayjs(iso).format('D MMM BB');
+    $('deMode').value = day.s === 'leave' ? 'leave' : (day.s === 'absent' ? 'absent' : 'work');
+    $('deIn').value = day.s === 'work' ? day.in : '08:00';
+    $('deOut').value = day.s === 'work' ? (day.out || '') : '17:00';
+    const kinds = ['ลาป่วย', 'ลากิจ', 'ลาพักร้อน'];
+    $('deKind').value = kinds.find(k => (day.note || '').indexOf(k) === 0) || 'ลากิจ';
+    $('deNote').value = '';
+    toggleDayFields();
+    $('dayEdit').style.display = 'block';
   }
 
+  function toggleDayFields() {
+    const m = $('deMode').value;
+    $('deWork').style.display = m === 'work' ? 'flex' : 'none';
+    $('deLeave').style.display = m === 'leave' ? 'flex' : 'none';
+    $('deNote').style.display = m === 'clear' ? 'none' : 'block';
+    $('deHint').style.display = m === 'work' ? 'block' : 'none';
+  }
+  $('deMode').onchange = toggleDayFields;
+
+  $('deSave').onclick = async () => {
+    const mode = $('deMode').value;
+    if (mode === 'work' && !$('deIn').value) return setMsg('❌ กรุณาระบุเวลาเข้างาน', 'err');
+    if (mode === 'clear' && !confirm('ล้างรายการทั้งหมดของวันนี้ ?')) return;
+    const btn = $('deSave');
+    btn.disabled = true;
+    try {
+      const out = await api({
+        action: 'adminSetDay', name: selected, date: editIso, mode,
+        timeIn: $('deIn').value, timeOut: $('deOut').value,
+        kind: $('deKind').value, note: $('deNote').value.trim()
+      });
+      const keep = editIso;
+      await load();
+      if (curEmp()) showDay(curEmp(), keep);
+      setMsg('✅ ' + out.message, 'ok');
+    } catch (e) { setMsg('❌ ' + e.message, 'err'); }
+    btn.disabled = false;
+  };
+
   function renderSlip(e) {
-    const s = e.sum, p = e.pay;
+    const s = e.sum, p = e.pay, st = data.settings;
     const lb = s.leaveBy;
     const leaveDetail = s.leaveDays ? ` (ป่วย ${lb['ลาป่วย']} / กิจ ${lb['ลากิจ']} / พักร้อน ${lb['ลาพักร้อน']})` : '';
     $('stats').innerHTML = `
@@ -370,19 +590,29 @@
       <div class="stat"><b>${num(s.hours)}</b><span>ชั่วโมงรวม</span></div>
       <div class="stat"><b>${num(s.otHours)}</b><span>OT (ชม.)</span></div>
       <div class="stat"><b>${s.leaveDays}</b><span>วันลา</span></div>
-      <div class="stat"><b>${s.absentDays}</b><span>วันขาด</span></div>`;
-    const noOut = s.noOutDays ? `<tr><td colspan="2" class="hint">⚠️ มี ${s.noOutDays} วันที่ไม่มีเวลาออกงาน (นับชั่วโมงปกติ ไม่มี OT)</td></tr>` : '';
-    $('slip').innerHTML = `
-      <tr class="sec"><td colspan="2">รายได้</td></tr>
-      <tr><td>ค่าแรง ${s.workDays} วัน × ${money(e.dailyRate)}</td><td>${money(p.base)}</td></tr>
-      <tr><td>OT ${num(s.otHours)} ชม. × ${money(e.otRateEff)}</td><td>${money(p.ot)}</td></tr>
-      <tr class="tot"><td>รวมรายได้</td><td>${money(p.gross)}</td></tr>
+      <div class="stat"><b>${s.absentDays}</b><span>วันขาด</span></div>
+      <div class="stat"><b>${s.holidayDays}</b><span>วันหยุดนักขัตฯ</span></div>`;
+
+    const line = (label, amt) => `<tr><td>${label}</td><td>${money(amt)}</td></tr>`;
+    let rows = '<tr class="sec"><td colspan="2">รายได้</td></tr>';
+    rows += line(`ค่าแรง ${e.normalDays} วัน × ${money(e.dailyRate)}`, p.base);
+    if (p.holiday > 0 || s.holidayPaidDays || s.holidayWorkDays)
+      rows += line(`ค่าจ้างวันหยุดนักขัตฤกษ์ ${s.holidayPaidDays + s.holidayWorkDays} วัน`, p.holiday);
+    if (p.premium > 0)
+      rows += line(`ค่าทำงานวันหยุด (นักขัตฤกษ์ ${s.holidayWorkDays} วัน / ประจำสัปดาห์ ${s.offDayWorkDays} วัน)`, p.premium);
+    rows += line(`OT ปกติ ${num(e.otNormalHours)} ชม. × ${money(e.otRateEff)}`, p.ot);
+    if (e.otHolidayHours > 0)
+      rows += line(`OT วันหยุด ${num(e.otHolidayHours)} ชม. × ${money(e.hourly * st.holidayOtMult)}`, p.otHoliday);
+    rows += `<tr class="tot"><td>รวมรายได้</td><td>${money(p.gross)}</td></tr>
       <tr class="sec"><td colspan="2">รายการหัก</td></tr>
       <tr><td>ประกันสังคม${e.sso ? '' : ' (ไม่หัก)'}</td><td>-${money(p.sso)}</td></tr>
       <tr><td>ภาษีหัก ณ ที่จ่าย (ประมาณการ)</td><td>-${money(p.tax)}</td></tr>
       <tr class="tot"><td>เงินได้สุทธิที่จ่าย</td><td class="net">${money(p.net)}</td></tr>
-      <tr><td colspan="2" class="hint">วันลา ${s.leaveDays} วัน${leaveDetail}${data.settings.paidLeave ? ' (จ่ายค่าจ้าง)' : ' (ไม่จ่ายค่าจ้าง)'}</td></tr>
-      ${noOut}`;
+      <tr><td colspan="2" class="hint">วันลา ${s.leaveDays} วัน${leaveDetail}${st.paidLeave ? ' (จ่ายค่าจ้างเฉพาะที่อนุมัติแล้ว)' : ' (ไม่จ่ายค่าจ้าง)'}</td></tr>`;
+    rows += `<tr><td colspan="2" class="hint">☀️ กะเช้า ${s.shiftMorning} วัน / 🌙 กะดึก ${s.shiftNight} วัน</td></tr>`;
+    if (s.pendingLeave) rows += `<tr><td colspan="2" class="hint">⏳ มีลารออนุมัติ ${s.pendingLeave} วัน</td></tr>`;
+    if (s.noOutDays) rows += `<tr><td colspan="2" class="hint">⚠️ มี ${s.noOutDays} วันที่ไม่มีเวลาออกงาน (นับชั่วโมงปกติ ไม่มี OT)</td></tr>`;
+    $('slip').innerHTML = rows;
   }
 
   // ===== Save rate =====
@@ -393,13 +623,28 @@
       const out = await api({
         action: 'saveEmployeeRate', name: selected,
         dailyRate: $('fDaily').value || 0, otRate: $('fOt').value || 0,
-        extra: $('fExtra').value || 0, sso: $('fSso').checked
+        extra: $('fExtra').value || 0, sso: $('fSso').checked,
+        resignDate: $('fResign').value || ''
       });
       setMsg('✅ ' + out.message, 'ok');
       await load();
       setMsg('✅ ' + out.message, 'ok');
     } catch (e) { setMsg('❌ ' + e.message, 'err'); }
     btn.disabled = false;
+  };
+
+  // ===== Delete user =====
+  $('btnDelUser').onclick = async () => {
+    const name = selected;
+    if (!name) return;
+    if (!confirm(`ลบพนักงาน "${name}" ?\n\nจะลบข้อมูลใบหน้าและอัตราค่าจ้าง และกู้คืนไม่ได้\n(ถ้าแค่ลาออก แนะนำให้ตั้ง "วันที่ลาออก" แทน)`)) return;
+    const withHistory = confirm(`ลบประวัติการลงเวลาของ "${name}" ด้วยหรือไม่?\n\nOK = ลบประวัติด้วย\nCancel = เก็บประวัติไว้ในชีต Attendance`);
+    try {
+      const out = await api({ action: 'deleteUser', name, deleteHistory: withHistory });
+      selected = null;
+      await load();
+      setMsg('✅ ' + out.message, 'ok');
+    } catch (e) { setMsg('❌ ' + e.message, 'err'); }
   };
 
   // ===== Settings =====
@@ -412,6 +657,9 @@
     $('sStd').value = st.stdHours; $('sBreak').value = st.breakHours; $('sOtm').value = st.otMultiplier;
     $('sSsoRate').value = st.ssoRate; $('sSsoMin').value = st.ssoMin; $('sSsoMax').value = st.ssoMax;
     $('sPaidLeave').checked = !!st.paidLeave;
+    $('sPaidHoliday').checked = !!st.paidHoliday;
+    $('sMorning').value = st.morningStart; $('sNight').value = st.nightStart;
+    $('sHolExtra').value = st.holidayWorkExtra; $('sOffMult').value = st.offDayMult; $('sHolOt').value = st.holidayOtMult;
     const wd = String(st.workdays).split(',');
     document.querySelectorAll('.wd').forEach(c => { c.checked = wd.indexOf(c.value) >= 0; });
   }
@@ -426,7 +674,10 @@
         settings: {
           stdHours: $('sStd').value, breakHours: $('sBreak').value, otMultiplier: $('sOtm').value,
           ssoRate: $('sSsoRate').value, ssoMin: $('sSsoMin').value, ssoMax: $('sSsoMax').value,
-          paidLeave: $('sPaidLeave').checked, workdays
+          paidLeave: $('sPaidLeave').checked, paidHoliday: $('sPaidHoliday').checked,
+          morningStart: $('sMorning').value, nightStart: $('sNight').value,
+          holidayWorkExtra: $('sHolExtra').value, offDayMult: $('sOffMult').value, holidayOtMult: $('sHolOt').value,
+          workdays
         }
       });
       await load();

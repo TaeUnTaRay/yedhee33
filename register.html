@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ลงทะเบียนใบหน้า</title>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="https://justadudewhohacks.github.io">
   <script src="js/api-config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -197,6 +199,12 @@
     .msg-success { color: #34d399; }
     .msg-error   { color: #f87171; }
 
+    #btnReset {
+      display: none; margin: 12px auto 0; background: none; border: none;
+      color: #64748b; font-family: inherit; font-size: 0.85em; cursor: pointer; text-decoration: underline;
+    }
+    .input-group input:disabled { opacity: 0.6; }
+
     /* Animations */
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin   { to { transform: rotate(360deg); } }
@@ -207,7 +215,7 @@
   <div class="page-header">
     <a href="index.html" class="back-btn">← กลับ</a>
     <h2>👤 ลงทะเบียนใบหน้า</h2>
-    <p class="instruction">บันทึก 3 มุม: หน้าตรง / หันซ้ายเล็กน้อย / หันขวาเล็กน้อย<br>เพื่อความแม่นยำสูงสุด</p>
+    <p class="instruction">ถ่าย 3 มุม: หน้าตรง / หันซ้ายเล็กน้อย / หันขวาเล็กน้อย<br>ระบบจะบันทึกให้ครั้งเดียวเมื่อถ่ายครบ</p>
   </div>
 
   <div class="step-dots">
@@ -229,9 +237,10 @@
       <input type="text" id="username" placeholder="ชื่อ-นามสกุลพนักงาน">
     </div>
 
-    <button id="btnSave" onclick="saveFace()" disabled>
-      📸 บันทึกใบหน้า <span id="saveCount" class="count-badge">0</span>
+    <button id="btnSave" onclick="onMainClick()" disabled>
+      📸 ถ่ายมุมที่ 1 <span id="saveCount" class="count-badge">0</span>
     </button>
+    <button id="btnReset" onclick="resetCaptures()">ล้างและถ่ายใหม่</button>
 
     <div id="msg"></div>
   </div>
@@ -242,88 +251,154 @@
   const video     = document.getElementById('video');
   const statusDiv = document.getElementById('status');
   const btnSave   = document.getElementById('btnSave');
+  const btnReset  = document.getElementById('btnReset');
+  const nameInput = document.getElementById('username');
   const msgDiv    = document.getElementById('msg');
-  const countSpan = document.getElementById('saveCount');
-  let saveCounter = 0;
+
+  // โมเดลจาก CDN (แคชในเบราว์เซอร์ได้ยาวกว่า) ถ้าโหลดไม่ได้ ลองแหล่งสำรอง
+  const MODEL_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights',
+    'https://justadudewhohacks.github.io/face-api.js/models'
+  ];
+  const STEPS = ['หน้าตรง', 'หันซ้ายเล็กน้อย', 'หันขวาเล็กน้อย'];
+  const TOTAL = STEPS.length;
+
+  let descriptors = [];   // เก็บในเครื่องก่อน แล้วส่งครั้งเดียวตอนครบ
+  let modelsReady = false, cameraReady = false, busy = false, failedUpload = false;
 
   if (!API_URL) {
     statusDiv.innerHTML = '<span style="color:#f87171">❌ ยังไม่ได้ตั้งค่า API URL — <a href="config.html" style="color:#fbbf24">ไปตั้งค่า</a></span>';
   } else {
-    window.addEventListener('load', initModels);
+    // เริ่มเปิดกล้องและโหลดโมเดลพร้อมกัน (ไม่รอกัน)
+    window.addEventListener('load', () => { startCamera(); loadModels(); });
   }
 
-  function updateDots() {
-    [1,2,3].forEach(i => {
-      const dot = document.getElementById('dot' + i);
-      dot.className = 'dot' + (i <= saveCounter ? ' active' : '');
+  function setStatus(html) { statusDiv.innerHTML = html; }
+  function showMsg(html) { msgDiv.innerHTML = html; }
+
+  function refreshUI() {
+    [1, 2, 3].forEach(i => {
+      document.getElementById('dot' + i).className = 'dot' + (i <= descriptors.length ? ' active' : '');
     });
+    const n = descriptors.length;
+    const ready = modelsReady && cameraReady && !busy;
+    btnSave.disabled = !ready;
+    if (failedUpload) btnSave.innerHTML = '🔁 ส่งอีกครั้ง <span class="count-badge">' + n + '</span>';
+    else if (busy) { /* keep current label */ }
+    else btnSave.innerHTML = '📸 ถ่ายมุมที่ ' + Math.min(n + 1, TOTAL) + ' (' + STEPS[Math.min(n, TOTAL - 1)] + ') <span class="count-badge">' + n + '</span>';
+    nameInput.disabled = n > 0 || busy;
+    btnReset.style.display = (n > 0 && !busy) ? 'block' : 'none';
+
+    if (modelsReady && cameraReady && !busy && n === 0) setStatus('');
   }
 
-  async function initModels() {
-    try {
-      const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-      await Promise.all([
-        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-      ]);
-      startCamera();
-    } catch (e) {
-      statusDiv.innerHTML = '<span style="color:#f87171">❌ โหลด AI Model ล้มเหลว: ' + e.message + '</span>';
+  async function loadModels() {
+    setStatus('<span class="spinner"></span> กำลังโหลด AI Model (ครั้งแรกอาจใช้เวลาสักครู่ ครั้งต่อไปจะเร็วขึ้น)...');
+    let lastErr = null;
+    for (const base of MODEL_SOURCES) {
+      try {
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(base),   // เล็กกว่า ssdMobilenet มาก
+          faceapi.nets.faceLandmark68Net.loadFromUri(base),
+          faceapi.nets.faceRecognitionNet.loadFromUri(base)
+        ]);
+        modelsReady = true;
+        refreshUI();
+        return;
+      } catch (e) { lastErr = e; }
     }
+    setStatus('<span style="color:#f87171">❌ โหลด AI Model ล้มเหลว: ' + (lastErr ? lastErr.message : '') + '</span>');
   }
 
   function startCamera() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
       .then(stream => {
         video.srcObject = stream;
-        statusDiv.innerText = '';
-        btnSave.disabled = false;
+        cameraReady = true;
+        refreshUI();
       })
       .catch(err => {
-        statusDiv.innerHTML = '<span style="color:#f87171">❌ เปิดกล้องไม่ได้: ' + err.message + '</span>';
+        setStatus('<span style="color:#f87171">❌ เปิดกล้องไม่ได้: ' + err.message + '</span>');
       });
   }
 
-  async function saveFace() {
-    const name = document.getElementById('username').value.trim();
+  function resetCaptures() {
+    descriptors = [];
+    failedUpload = false;
+    showMsg('');
+    refreshUI();
+  }
+
+  function onMainClick() {
+    if (failedUpload) return uploadAll();
+    return capture();
+  }
+
+  async function capture() {
+    const name = nameInput.value.trim();
     if (!name) return alert('กรุณาใส่ชื่อก่อน');
 
+    busy = true;
     btnSave.disabled = true;
-    btnSave.innerHTML = '⏳ กำลังประมวลผล... <span class="count-badge">' + saveCounter + '</span>';
-    msgDiv.innerText = '';
+    btnSave.innerHTML = '⏳ กำลังตรวจจับใบหน้า...';
+    showMsg('');
 
-    const detection = await faceapi
-      .detectSingleFace(video)
-      .withFaceLandmarks()
-      .withFaceDescriptor();
+    let detection = null;
+    try {
+      detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+    } catch (e) { console.error(e); }
 
+    busy = false;
     if (!detection) {
-      alert('ไม่พบใบหน้า! กรุณามองกล้องให้ชัดเจน');
-      btnSave.disabled = false;
-      btnSave.innerHTML = '📸 บันทึกใบหน้า <span class="count-badge" id="saveCount">' + saveCounter + '</span>';
-      return;
+      showMsg('<span class="msg-error">ไม่พบใบหน้า! กรุณามองกล้องให้ชัดเจนแล้วลองอีกครั้ง</span>');
+      return refreshUI();
     }
 
-    const descriptorArray = Array.from(detection.descriptor);
+    // ปัดทศนิยมเพื่อลดขนาดข้อมูลที่ส่ง (ไม่กระทบความแม่นยำ)
+    descriptors.push(Array.from(detection.descriptor, x => +x.toFixed(5)));
+    refreshUI();
+
+    if (descriptors.length >= TOTAL) {
+      uploadAll();
+    } else {
+      showMsg('<span class="msg-success">✅ ถ่ายมุมที่ ' + descriptors.length + ' แล้ว — ต่อไป: ' + STEPS[descriptors.length] + '</span>');
+    }
+  }
+
+  async function uploadAll() {
+    const name = nameInput.value.trim();
+    busy = true;
+    failedUpload = false;
+    btnSave.disabled = true;
+    btnSave.innerHTML = '⏳ กำลังบันทึก...';
+    nameInput.disabled = true;
+    btnReset.style.display = 'none';
 
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'registerUser', name, faceDescriptor: descriptorArray })
+        body: JSON.stringify({ action: 'registerUser', name, faceDescriptors: descriptors })
       });
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
 
-      saveCounter++;
-      countSpan.innerText = saveCounter;
-      updateDots();
-      msgDiv.innerHTML = '<span class="msg-success">✅ บันทึกครั้งที่ ' + saveCounter + ' สำเร็จ! ขยับหน้าเล็กน้อยแล้วกดอีกครั้ง</span>';
-      btnSave.disabled = false;
-      btnSave.innerHTML = '📸 บันทึกเพิ่ม <span class="count-badge" id="saveCount">' + saveCounter + '</span>';
+      busy = false;
+      showMsg('<span class="msg-success">✅ ลงทะเบียน "' + name.replace(/[<>&]/g, '') + '" สำเร็จ (' + descriptors.length + ' มุม)</span>');
+      // เตรียมลงทะเบียนคนถัดไป (ค้างจุดไว้ให้เห็นครู่หนึ่ง)
+      setTimeout(() => {
+        descriptors = [];
+        nameInput.value = '';
+        refreshUI();
+      }, 2500);
+      btnSave.innerHTML = '✅ บันทึกแล้ว';
     } catch (e) {
-      msgDiv.innerHTML = '<span class="msg-error">❌ บันทึกล้มเหลว: ' + e.message + '</span>';
-      btnSave.disabled = false;
-      btnSave.innerHTML = '📸 บันทึกใบหน้า <span class="count-badge" id="saveCount">' + saveCounter + '</span>';
+      busy = false;
+      failedUpload = true;
+      showMsg('<span class="msg-error">❌ บันทึกล้มเหลว: ' + e.message + ' (ข้อมูลที่ถ่ายยังอยู่ กด "ส่งอีกครั้ง")</span>');
+      refreshUI();
     }
   }
 </script>
