@@ -199,6 +199,57 @@
     .msg-success { color: #34d399; }
     .msg-error   { color: #f87171; }
 
+    /* ===== Face guide overlay ===== */
+    .guide { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; border-radius: 18px; }
+    .face-oval {
+      position: absolute; left: 50%; top: 50%;
+      width: 56%; aspect-ratio: 3 / 4; max-height: 86%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      border: 3px dashed rgba(255,255,255,0.75);
+      box-shadow: 0 0 0 999px rgba(10,10,26,0.50);
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .guide.scanning .face-oval { animation: pulse 1.6s ease-in-out infinite; }
+    .guide.adjust .face-oval { border-color: #fbbf24; border-style: dashed; }
+    .guide.ok .face-oval { border-color: #34d399; border-style: solid; box-shadow: 0 0 0 999px rgba(10,10,26,0.50), 0 0 24px rgba(52,211,153,0.6); animation: none; }
+    .guide.none .face-oval { border-color: #f87171; }
+    .guide.done .face-oval { border-color: #34d399; border-style: solid; }
+    .corner { position: absolute; width: 26px; height: 26px; border: 0 solid #a5b4fc; opacity: 0.9; }
+    .c-tl { top: 12px; left: 12px; border-top-width: 3px; border-left-width: 3px; border-radius: 6px 0 0 0; }
+    .c-tr { top: 12px; right: 12px; border-top-width: 3px; border-right-width: 3px; border-radius: 0 6px 0 0; }
+    .c-bl { bottom: 12px; left: 12px; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 6px; }
+    .c-br { bottom: 12px; right: 12px; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 6px 0; }
+    .guide.ok .corner { border-color: #34d399; }
+    .arrow {
+      display: none; position: absolute; top: 50%; transform: translateY(-50%);
+      font-size: 34px; color: #fbbf24; text-shadow: 0 0 12px rgba(251,191,36,0.7);
+      animation: nudge 0.9s ease-in-out infinite;
+    }
+    .arrow-left { left: 6%; } .arrow-right { right: 6%; }
+    .arrow-right { animation-name: nudgeR; }
+    .guide-badge {
+      position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.68); backdrop-filter: blur(8px);
+      color: #f1f5f9; padding: 8px 18px; border-radius: 30px;
+      font-size: 0.92em; font-weight: 600; white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.12); max-width: 92%;
+    }
+    .guide.ok .guide-badge { background: rgba(5,150,105,0.8); }
+    .guide.none .guide-badge { background: rgba(185,28,28,0.75); }
+    .step-chip {
+      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(99,102,241,0.8); color: #fff; padding: 4px 14px; border-radius: 20px;
+      font-size: 0.8em; font-weight: 600; display: none;
+    }
+    .guide.scanning .step-chip { display: block; }
+    .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+    .flash.go { animation: flashAnim 0.35s ease-out; }
+    @keyframes pulse { 0%,100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.02); } }
+    @keyframes nudge { 0%,100% { transform: translateY(-50%) translateX(0); } 50% { transform: translateY(-50%) translateX(-8px); } }
+    @keyframes nudgeR { 0%,100% { transform: translateY(-50%) translateX(0); } 50% { transform: translateY(-50%) translateX(8px); } }
+    @keyframes flashAnim { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+
     #btnReset {
       display: none; margin: 12px auto 0; background: none; border: none;
       color: #64748b; font-family: inherit; font-size: 0.85em; cursor: pointer; text-decoration: underline;
@@ -215,7 +266,7 @@
   <div class="page-header">
     <a href="index.html" class="back-btn">← กลับ</a>
     <h2>👤 ลงทะเบียนใบหน้า</h2>
-    <p class="instruction">ถ่าย 3 มุม: หน้าตรง / หันซ้ายเล็กน้อย / หันขวาเล็กน้อย<br>ระบบจะบันทึกให้ครั้งเดียวเมื่อถ่ายครบ</p>
+    <p class="instruction">กด "เริ่มสแกน" ครั้งเดียว ระบบจะถ่ายให้อัตโนมัติ 3 มุม<br>หน้าตรง → หันซ้ายเล็กน้อย → หันขวาเล็กน้อย แล้วบันทึกให้เอง</p>
   </div>
 
   <div class="step-dots">
@@ -230,6 +281,18 @@
 
   <div class="video-wrapper">
     <video id="video" autoplay muted playsinline></video>
+
+    <!-- กรอบนำทางใบหน้า -->
+    <div class="guide" id="guide">
+      <div class="face-oval" id="faceOval"></div>
+      <div class="corner c-tl"></div><div class="corner c-tr"></div>
+      <div class="corner c-bl"></div><div class="corner c-br"></div>
+      <div class="arrow arrow-left" id="arrowLeft">◀</div>
+      <div class="arrow arrow-right" id="arrowRight">▶</div>
+      <div class="guide-badge" id="guideBadge">พร้อมสแกน</div>
+      <div class="step-chip" id="stepChip"></div>
+      <div class="flash" id="flash"></div>
+    </div>
   </div>
 
   <div class="form-section">
@@ -238,9 +301,9 @@
     </div>
 
     <button id="btnSave" onclick="onMainClick()" disabled>
-      📸 ถ่ายมุมที่ 1 <span id="saveCount" class="count-badge">0</span>
+      🎬 เริ่มสแกน (3 มุมอัตโนมัติ) <span id="saveCount" class="count-badge">0</span>
     </button>
-    <button id="btnReset" onclick="resetCaptures()">ล้างและถ่ายใหม่</button>
+    <button id="btnReset" onclick="resetCaptures()">ยกเลิก / ล้างและเริ่มใหม่</button>
 
     <div id="msg"></div>
   </div>
@@ -254,27 +317,65 @@
   const btnReset  = document.getElementById('btnReset');
   const nameInput = document.getElementById('username');
   const msgDiv    = document.getElementById('msg');
+  const guide     = document.getElementById('guide');
+  const guideBadge = document.getElementById('guideBadge');
+  const stepChip  = document.getElementById('stepChip');
+  const arrowL    = document.getElementById('arrowLeft');
+  const arrowR    = document.getElementById('arrowRight');
 
   // โมเดลจาก CDN (แคชในเบราว์เซอร์ได้ยาวกว่า) ถ้าโหลดไม่ได้ ลองแหล่งสำรอง
   const MODEL_SOURCES = [
     'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights',
     'https://justadudewhohacks.github.io/face-api.js/models'
   ];
-  const STEPS = ['หน้าตรง', 'หันซ้ายเล็กน้อย', 'หันขวาเล็กน้อย'];
-  const TOTAL = STEPS.length;
 
-  let descriptors = [];   // เก็บในเครื่องก่อน แล้วส่งครั้งเดียวตอนครบ
+  // yaw = ตำแหน่งปลายจมูกเทียบกึ่งกลางกรามเป็นสัดส่วนความกว้างหน้า
+  // (ภาพดิบจากกล้อง: หันไปทางซ้ายของผู้ใช้ => yaw > 0)
+  const STEPS = [
+    { label: 'หน้าตรง',        hint: 'มองตรงที่กล้อง',                 arrow: '',      ok: y => Math.abs(y) < 0.10 },
+    { label: 'หันซ้ายเล็กน้อย', hint: 'ค่อยๆ หันหน้าไปทางซ้ายเล็กน้อย',  arrow: 'left',  ok: y => y > 0.10 && y < 0.45 },
+    { label: 'หันขวาเล็กน้อย', hint: 'ค่อยๆ หันหน้าไปทางขวาเล็กน้อย',  arrow: 'right', ok: y => y < -0.10 && y > -0.45 }
+  ];
+  const TOTAL = STEPS.length;
+  const STEP_TIMEOUT_MS = 10000;   // ถ้าท่าไม่ตรงนานเกินนี้ ถ่ายตามที่เห็นเพื่อไม่ให้ค้าง
+  const STABLE_FRAMES = 3;         // ต้องนิ่งในท่าที่ถูกต้องกี่เฟรมก่อนถ่าย
+
+  let descriptors = [];
   let modelsReady = false, cameraReady = false, busy = false, failedUpload = false;
+  let runId = 0;                   // ใช้ยกเลิกรอบสแกนที่กำลังทำงาน
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const detectorOpts = () => new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
 
   if (!API_URL) {
     statusDiv.innerHTML = '<span style="color:#f87171">❌ ยังไม่ได้ตั้งค่า API URL — <a href="config.html" style="color:#fbbf24">ไปตั้งค่า</a></span>';
   } else {
-    // เริ่มเปิดกล้องและโหลดโมเดลพร้อมกัน (ไม่รอกัน)
     window.addEventListener('load', () => { startCamera(); loadModels(); });
   }
 
   function setStatus(html) { statusDiv.innerHTML = html; }
   function showMsg(html) { msgDiv.innerHTML = html; }
+
+  function yawOf(p) {
+    const width = p[16].x - p[0].x;
+    if (!width) return 0;
+    return (p[30].x - (p[0].x + p[16].x) / 2) / width;
+  }
+
+  // ----- guide overlay -----
+  function setGuide(state, badge) {
+    guide.classList.remove('adjust', 'ok', 'none', 'done');
+    if (state) guide.classList.add(state);
+    if (badge !== undefined) guideBadge.textContent = badge;
+  }
+  function showArrow(dir) {
+    arrowL.style.display = dir === 'left' ? 'block' : 'none';
+    arrowR.style.display = dir === 'right' ? 'block' : 'none';
+  }
+  function doFlash() {
+    const f = document.getElementById('flash');
+    f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  }
 
   function refreshUI() {
     [1, 2, 3].forEach(i => {
@@ -284,11 +385,9 @@
     const ready = modelsReady && cameraReady && !busy;
     btnSave.disabled = !ready;
     if (failedUpload) btnSave.innerHTML = '🔁 ส่งอีกครั้ง <span class="count-badge">' + n + '</span>';
-    else if (busy) { /* keep current label */ }
-    else btnSave.innerHTML = '📸 ถ่ายมุมที่ ' + Math.min(n + 1, TOTAL) + ' (' + STEPS[Math.min(n, TOTAL - 1)] + ') <span class="count-badge">' + n + '</span>';
-    nameInput.disabled = n > 0 || busy;
-    btnReset.style.display = (n > 0 && !busy) ? 'block' : 'none';
-
+    else if (!busy) btnSave.innerHTML = '🎬 เริ่มสแกน (3 มุมอัตโนมัติ) <span class="count-badge">' + n + '</span>';
+    nameInput.disabled = busy || failedUpload;
+    btnReset.style.display = (busy || n > 0 || failedUpload) ? 'block' : 'none';
     if (modelsReady && cameraReady && !busy && n === 0) setStatus('');
   }
 
@@ -298,11 +397,12 @@
     for (const base of MODEL_SOURCES) {
       try {
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(base),   // เล็กกว่า ssdMobilenet มาก
+          faceapi.nets.tinyFaceDetector.loadFromUri(base),
           faceapi.nets.faceLandmark68Net.loadFromUri(base),
           faceapi.nets.faceRecognitionNet.loadFromUri(base)
         ]);
         modelsReady = true;
+        setGuide('', 'พร้อมสแกน');
         refreshUI();
         return;
       } catch (e) { lastErr = e; }
@@ -323,49 +423,100 @@
   }
 
   function resetCaptures() {
+    runId++;                       // ยกเลิกรอบสแกนที่ค้างอยู่
+    busy = false;
     descriptors = [];
     failedUpload = false;
+    guide.classList.remove('scanning');
+    showArrow('');
+    setGuide('', 'พร้อมสแกน');
+    stepChip.textContent = '';
     showMsg('');
     refreshUI();
   }
 
   function onMainClick() {
     if (failedUpload) return uploadAll();
-    return capture();
+    return startScan();
   }
 
-  async function capture() {
+  // ----- สแกนอัตโนมัติ 3 มุม ในการกดครั้งเดียว -----
+  async function startScan() {
     const name = nameInput.value.trim();
     if (!name) return alert('กรุณาใส่ชื่อก่อน');
+    if (!modelsReady || !cameraReady) return;
 
+    const run = ++runId;
+    descriptors = [];
+    failedUpload = false;
     busy = true;
     btnSave.disabled = true;
-    btnSave.innerHTML = '⏳ กำลังตรวจจับใบหน้า...';
+    btnSave.innerHTML = '⏳ กำลังสแกน...';
+    nameInput.disabled = true;
+    btnReset.style.display = 'block';
     showMsg('');
-
-    let detection = null;
-    try {
-      detection = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-    } catch (e) { console.error(e); }
-
-    busy = false;
-    if (!detection) {
-      showMsg('<span class="msg-error">ไม่พบใบหน้า! กรุณามองกล้องให้ชัดเจนแล้วลองอีกครั้ง</span>');
-      return refreshUI();
-    }
-
-    // ปัดทศนิยมเพื่อลดขนาดข้อมูลที่ส่ง (ไม่กระทบความแม่นยำ)
-    descriptors.push(Array.from(detection.descriptor, x => +x.toFixed(5)));
+    guide.classList.add('scanning');
     refreshUI();
 
-    if (descriptors.length >= TOTAL) {
-      uploadAll();
-    } else {
-      showMsg('<span class="msg-success">✅ ถ่ายมุมที่ ' + descriptors.length + ' แล้ว — ต่อไป: ' + STEPS[descriptors.length] + '</span>');
+    for (let i = 0; i < TOTAL; i++) {
+      const d = await captureStep(i, run);
+      if (run !== runId) return;             // ถูกยกเลิก
+      descriptors.push(d);
+      doFlash();
+      setGuide('ok', '✅ ' + STEPS[i].label + ' เรียบร้อย');
+      showArrow('');
+      refreshUI();
+      await sleep(i < TOTAL - 1 ? 900 : 500);
+      if (run !== runId) return;
     }
+
+    guide.classList.remove('scanning');
+    setGuide('done', '✅ สแกนครบ 3 มุม กำลังบันทึก...');
+    await uploadAll();
+  }
+
+  // รอให้ผู้ใช้อยู่ในท่าที่ถูกต้อง นิ่งไว้ครู่หนึ่ง แล้วถ่ายอัตโนมัติ
+  async function captureStep(i, run) {
+    const cfg = STEPS[i];
+    stepChip.textContent = 'มุมที่ ' + (i + 1) + '/' + TOTAL + ' • ' + cfg.label;
+    showArrow(cfg.arrow);
+    setGuide('adjust', cfg.hint);
+    const t0 = Date.now();
+    let good = 0;
+
+    while (run === runId) {
+      let res = null;
+      try {
+        res = await faceapi.detectSingleFace(video, detectorOpts()).withFaceLandmarks();
+      } catch (e) { console.error(e); }
+      if (run !== runId) return null;
+
+      if (!res) {
+        good = 0;
+        setGuide('none', 'ไม่พบใบหน้า — กรุณาอยู่ในกรอบ');
+      } else {
+        const yaw = yawOf(res.landmarks.positions);
+        const timedOut = Date.now() - t0 > STEP_TIMEOUT_MS;
+        if (cfg.ok(yaw) || timedOut) {
+          good++;
+          setGuide('ok', 'นิ่งไว้ กำลังถ่าย...');
+        } else {
+          good = 0;
+          setGuide('adjust', cfg.hint);
+        }
+        if (good >= STABLE_FRAMES) {
+          let full = null;
+          try {
+            full = await faceapi.detectSingleFace(video, detectorOpts()).withFaceLandmarks().withFaceDescriptor();
+          } catch (e) { console.error(e); }
+          if (run !== runId) return null;
+          if (full) return Array.from(full.descriptor, x => +x.toFixed(5));
+          good = 0;
+        }
+      }
+      await sleep(120);
+    }
+    return null;
   }
 
   async function uploadAll() {
@@ -376,6 +527,7 @@
     btnSave.innerHTML = '⏳ กำลังบันทึก...';
     nameInput.disabled = true;
     btnReset.style.display = 'none';
+    const run = runId;
 
     try {
       const res = await fetch(API_URL, {
@@ -386,18 +538,23 @@
       if (data.error) throw new Error(data.error);
 
       busy = false;
+      setGuide('done', '✅ บันทึกสำเร็จ');
       showMsg('<span class="msg-success">✅ ลงทะเบียน "' + name.replace(/[<>&]/g, '') + '" สำเร็จ (' + descriptors.length + ' มุม)</span>');
-      // เตรียมลงทะเบียนคนถัดไป (ค้างจุดไว้ให้เห็นครู่หนึ่ง)
+      btnSave.innerHTML = '✅ บันทึกแล้ว';
+      // เตรียมลงทะเบียนคนถัดไป
       setTimeout(() => {
+        if (run !== runId) return;
         descriptors = [];
         nameInput.value = '';
+        setGuide('', 'พร้อมสแกน');
+        stepChip.textContent = '';
         refreshUI();
       }, 2500);
-      btnSave.innerHTML = '✅ บันทึกแล้ว';
     } catch (e) {
       busy = false;
       failedUpload = true;
-      showMsg('<span class="msg-error">❌ บันทึกล้มเหลว: ' + e.message + ' (ข้อมูลที่ถ่ายยังอยู่ กด "ส่งอีกครั้ง")</span>');
+      setGuide('none', 'บันทึกไม่สำเร็จ');
+      showMsg('<span class="msg-error">❌ บันทึกล้มเหลว: ' + e.message + ' (ข้อมูลที่สแกนยังอยู่ กด "ส่งอีกครั้ง")</span>');
       refreshUI();
     }
   }
