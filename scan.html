@@ -6,7 +6,9 @@
   <title>สแกนเข้างาน</title>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
   <script src="js/api-config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.js"></script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="https://justadudewhohacks.github.io">
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/themes/dark.css">
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
@@ -330,8 +332,6 @@
     ⚠️ คุณอยู่นอกพื้นที่ที่กำหนด!<br>กรุณาเข้าใกล้จุดเช็คอินแล้วรีเฟรชหน้าจอ
   </div>
 
-  <button id="btnStart" onclick="startCamera()">📷 แตะเพื่อเริ่มสแกน</button>
-
   <div class="video-container">
     <div class="scanner-frame">
       <div class="corner corner-tl"></div>
@@ -394,160 +394,260 @@
   const confirmModal   = document.getElementById('confirmModal');
   const gpsStatus      = document.getElementById('gps-status');
   const gpsAlertBox    = document.getElementById('gps-alert-box');
-  const btnStart       = document.getElementById('btnStart');
 
   const MATCH_THRESHOLD = 0.45;
 
   let knownFaces   = [];
-  let scanInterval = null;
   let currentMatch = null;
   let currentLat   = null;
   let currentLng   = null;
   let shiftCfg     = { morningStart: 4, nightStart: 16 };   // อัปเดตจาก getConfig
 
   // ===== Init =====
+  // ทำทุกอย่างพร้อมกัน (GPS / ตั้งค่า / โมเดล AI / ฐานข้อมูลใบหน้า / กล้อง) แล้วเริ่มสแกนอัตโนมัติเมื่อพร้อม
+  const CFG_KEY   = 'gpsConfigCache_v1';
+  const FACES_KEY = 'knownFacesCache_v1';
+  const CACHE_MAX_AGE = 7 * 86400000;
+  const MODEL_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights',
+    'https://justadudewhohacks.github.io/face-api.js/models'
+  ];
+
+  const ready = { gps: false, camera: false, models: false, faces: false };
+  let fatal = false, gpsBlocked = false, gpsPos = null, gpsConfig = null;
+  let scanning = false, scanRun = 0, cameraStarting = false;
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  function readCache(key) {
+    try {
+      const c = JSON.parse(localStorage.getItem(key));
+      if (c && c.d && Date.now() - c.t < CACHE_MAX_AGE) return c.d;
+    } catch (e) {}
+    return null;
+  }
+  function writeCache(key, d) {
+    try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), d: d })); } catch (e) {}
+  }
+
   if (!API_URL) {
     showError('ยังไม่ได้ตั้งค่า API URL — <a href="config.html" style="color:#fbbf24">ไปตั้งค่า</a>');
   } else {
     window.addEventListener('load', init);
   }
 
-  async function init() {
-    try {
-      mainStatus.innerText = '1/4 ตรวจสอบ GPS...';
-      await checkGPS();
-    } catch (e) {
-      showError(e.message);
-    }
+  function init() {
+    gpsConfig = readCache(CFG_KEY);                       // ใช้ค่าจากแคชก่อน แล้วโหลดใหม่เบื้องหลัง
+    if (gpsConfig && gpsConfig.nightStart) shiftCfg = { morningStart: gpsConfig.morningStart, nightStart: gpsConfig.nightStart };
+    renderProgress();
+    startGps();
+    loadConfig();
+    loadModels();
+    loadFaces();
+    startCamera();
+  }
+
+  function canScan() {
+    return ready.gps && ready.camera && ready.models && ready.faces && !gpsBlocked && !fatal && !currentMatch;
+  }
+
+  function renderProgress() {
+    if (fatal || gpsBlocked || currentMatch || canScan()) return;
+    const mk = (ok, label) => (ok ? '✅' : '⏳') + ' ' + label;
+    mainStatus.innerHTML = [mk(ready.gps, 'GPS'), mk(ready.camera, 'กล้อง'), mk(ready.models, 'AI'), mk(ready.faces, 'ฐานข้อมูล')].join(' &nbsp; ');
+    mainStatus.style.color = '#94a3b8';
+  }
+
+  function tryStart() {
+    renderProgress();
+    if (canScan() && !scanning) startScanLoop();
+  }
+
+  function fatalError(msg) {
+    fatal = true;
+    stopScan();
+    stopCamera();
+    showError(msg);
   }
 
   // ===== GPS =====
-  function checkGPS() {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Browser ไม่รองรับ GPS'));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        async pos => {
-          currentLat = pos.coords.latitude;
-          currentLng = pos.coords.longitude;
-
-          try {
-            const config = await fetch(API_URL + '?action=getConfig').then(r => r.json());
-            if (config.nightStart) shiftCfg = { morningStart: config.morningStart, nightStart: config.nightStart };
-
-            if (!config.lat || !config.lng || config.radius == 0) {
-              gpsStatus.innerHTML = '<span style="color:#34d399">📍 GPS: ไม่จำกัดพื้นที่</span>';
-              resolve();
-              initFaceSystem();
-              return;
-            }
-
-            const dist = haversineKm(currentLat, currentLng, config.lat, config.lng);
-
-            if (dist <= config.radius) {
-              gpsStatus.innerHTML = '<span style="color:#34d399">📍 GPS: OK (ห่างเป้าหมาย ' + dist.toFixed(3) + ' km)</span>';
-              resolve();
-              initFaceSystem();
-            } else {
-              gpsStatus.innerHTML = '<span style="color:#f87171">📍 GPS: ห่างเกินไป (' + dist.toFixed(3) + ' km / กำหนด ' + config.radius + ' km)</span>';
-              gpsAlertBox.style.display = 'block';
-              mainStatus.innerText = '⛔ ไม่อนุญาตให้สแกน';
-              overlayStatus.innerText = 'Out of Range';
-            }
-          } catch (e) {
-            reject(new Error('เชื่อมต่อ API ไม่ได้: ' + e.message));
-          }
-        },
-        () => reject(new Error('กรุณาเปิด GPS (Location Service)'))
-      );
-    });
+  function startGps() {
+    if (!navigator.geolocation) return fatalError('Browser ไม่รองรับ GPS');
+    navigator.geolocation.getCurrentPosition(
+      pos => { gpsPos = pos.coords; evaluateGps(); },
+      () => fatalError('กรุณาเปิด GPS (Location Service)'),
+      { enableHighAccuracy: false, maximumAge: 120000, timeout: 15000 }   // ใช้ตำแหน่งล่าสุดได้ (เร็วขึ้น)
+    );
   }
 
-  // ===== Load AI =====
-  async function initFaceSystem() {
-    mainStatus.innerText = '2/4 โหลด AI Model...';
-    const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+  async function loadConfig() {
     try {
-      await Promise.all([
-        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-      ]);
-      loadFaceDatabase();
+      const c = await fetch(API_URL + '?action=getConfig').then(r => r.json());
+      gpsConfig = c;
+      writeCache(CFG_KEY, c);
+      if (c.nightStart) shiftCfg = { morningStart: c.morningStart, nightStart: c.nightStart };
+      evaluateGps();
     } catch (e) {
-      showError('โหลด AI Model ล้มเหลว: ' + e.message);
+      if (!gpsConfig) fatalError('เชื่อมต่อ API ไม่ได้: ' + e.message);
     }
   }
 
-  // ===== Load DB =====
-  async function loadFaceDatabase() {
-    mainStatus.innerText = '3/4 โหลดฐานข้อมูลพนักงาน...';
+  function evaluateGps() {
+    if (!gpsPos || !gpsConfig) return;
+    currentLat = gpsPos.latitude;
+    currentLng = gpsPos.longitude;
+    const c = gpsConfig;
+
+    if (!c.lat || !c.lng || c.radius == 0) {
+      gpsStatus.innerHTML = '<span style="color:#34d399">📍 GPS: ไม่จำกัดพื้นที่</span>';
+      return setGpsOk(true);
+    }
+    const dist = haversineKm(currentLat, currentLng, c.lat, c.lng);
+    if (dist <= c.radius) {
+      gpsStatus.innerHTML = '<span style="color:#34d399">📍 GPS: OK (ห่างเป้าหมาย ' + dist.toFixed(3) + ' km)</span>';
+      setGpsOk(true);
+    } else {
+      gpsStatus.innerHTML = '<span style="color:#f87171">📍 GPS: ห่างเกินไป (' + dist.toFixed(3) + ' km / กำหนด ' + c.radius + ' km)</span>';
+      setGpsOk(false);
+    }
+  }
+
+  function setGpsOk(ok) {
+    ready.gps = ok;
+    gpsBlocked = !ok;
+    if (ok) {
+      gpsAlertBox.style.display = 'none';
+      if (!video.srcObject) startCamera();
+      tryStart();
+    } else {
+      gpsAlertBox.style.display = 'block';
+      mainStatus.innerText = '⛔ ไม่อนุญาตให้สแกน';
+      overlayStatus.innerText = 'Out of Range';
+      stopScan();
+      stopCamera();
+    }
+  }
+
+  // ===== Load AI (ใช้โมเดลตรวจจับใบหน้าแบบเล็ก โหลดเร็วและประมวลผลเร็วกว่า) =====
+  async function loadModels() {
+    let lastErr = null;
+    for (const base of MODEL_SOURCES) {
+      try {
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(base),
+          faceapi.nets.faceLandmark68Net.loadFromUri(base),
+          faceapi.nets.faceRecognitionNet.loadFromUri(base)
+        ]);
+        ready.models = true;
+        return tryStart();
+      } catch (e) { lastErr = e; }
+    }
+    fatalError('โหลด AI Model ล้มเหลว: ' + (lastErr ? lastErr.message : ''));
+  }
+
+  // ===== Load DB (ใช้แคชในเครื่องให้สแกนได้ทันที แล้วอัปเดตจากเซิร์ฟเวอร์เบื้องหลัง) =====
+  function applyFaces(list) {
+    knownFaces = list.map(u => ({ name: u.label, descriptor: new Float32Array(u.descriptor) }));
+  }
+
+  async function loadFaces() {
+    const cached = readCache(FACES_KEY);
+    if (cached && cached.length) {
+      applyFaces(cached);
+      ready.faces = true;
+      tryStart();
+    }
     try {
       const data = await fetch(API_URL + '?action=getKnownFaces').then(r => r.json());
-      if (!data || data.length === 0) return showError('ไม่พบข้อมูลพนักงาน กรุณาลงทะเบียนก่อน');
-
-      knownFaces = data.map(u => ({
-        name: u.label,
-        descriptor: new Float32Array(u.descriptor)
-      }));
-
-      mainStatus.innerText    = '✅ ระบบพร้อมใช้งาน';
-      mainStatus.style.color  = '#34d399';
-      btnStart.style.display  = 'inline-block';
+      if (!Array.isArray(data)) throw new Error((data && data.error) || 'ข้อมูลไม่ถูกต้อง');
+      if (data.length === 0) {
+        try { localStorage.removeItem(FACES_KEY); } catch (e) {}
+        knownFaces = [];
+        return fatalError('ไม่พบข้อมูลพนักงาน กรุณาลงทะเบียนก่อน');
+      }
+      applyFaces(data);
+      writeCache(FACES_KEY, data);
+      ready.faces = true;
+      tryStart();
     } catch (e) {
-      showError('โหลดฐานข้อมูลล้มเหลว: ' + e.message);
+      if (!ready.faces) fatalError('โหลดฐานข้อมูลล้มเหลว: ' + e.message);
     }
   }
 
   // ===== Camera =====
   function startCamera() {
-    btnStart.style.display = 'none';
-    mainStatus.innerText   = 'กำลังเปิดกล้อง...';
-    mainStatus.style.color = '#94a3b8';
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+    if (cameraStarting || video.srcObject) return;
+    cameraStarting = true;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
       .then(stream => {
+        cameraStarting = false;
+        if (gpsBlocked || fatal) { stream.getTracks().forEach(t => t.stop()); return; }
         video.srcObject = stream;
         video.classList.add('active');
-        mainStatus.innerText   = '✅ กำลังสแกน...';
-        mainStatus.style.color = '#34d399';
-        document.getElementById('scanLine').classList.add('active');
-        startScanLoop();
+        ready.camera = true;
+        tryStart();
       })
       .catch(err => {
-        showError('เปิดกล้องไม่ได้: ' + err.message);
-        btnStart.style.display = 'inline-block';
+        cameraStarting = false;
+        fatalError('เปิดกล้องไม่ได้: ' + err.message);
       });
+  }
+
+  function stopCamera() {
+    if (video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.stop());
+      video.srcObject = null;
+    }
+    video.classList.remove('active');
+    ready.camera = false;
   }
 
   // ===== Scan Loop =====
   function startScanLoop() {
-    if (scanInterval) clearInterval(scanInterval);
-    overlayStatus.innerText     = 'มองกล้องเพื่อสแกน';
+    if (scanning) return;
+    scanning = true;
+    const run = ++scanRun;
+    mainStatus.innerText   = '✅ กำลังสแกน...';
+    mainStatus.style.color = '#34d399';
+    document.getElementById('scanLine').classList.add('active');
+    overlayStatus.innerText        = 'มองกล้องเพื่อสแกน';
     overlayStatus.style.background = 'rgba(0,0,0,0.65)';
+    scanLoop(run);
+  }
 
-    scanInterval = setInterval(async () => {
-      if (video.paused || video.ended) return;
+  function stopScan() {
+    scanning = false;
+    scanRun++;
+    document.getElementById('scanLine').classList.remove('active');
+  }
 
-      const detection = await faceapi
-        .detectSingleFace(video)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+  async function scanLoop(run) {
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
+    while (run === scanRun) {
+      if (video.readyState >= 2 && !video.paused && !video.ended) {
+        let detection = null;
+        try {
+          detection = await faceapi.detectSingleFace(video, opts).withFaceLandmarks().withFaceDescriptor();
+        } catch (e) { console.error(e); }
+        if (run !== scanRun) return;
 
-      if (detection) {
-        const best = findBestMatch(detection.descriptor);
-        if (best.distance < MATCH_THRESHOLD) {
-          clearInterval(scanInterval);
-          document.getElementById('scanLine').classList.remove('active');
-          showModal(best);
+        if (detection) {
+          const best = findBestMatch(detection.descriptor);
+          if (best.distance < MATCH_THRESHOLD) {
+            scanning = false;
+            document.getElementById('scanLine').classList.remove('active');
+            showModal(best);
+            return;
+          }
+          overlayStatus.innerText        = 'ไม่รู้จัก (' + best.distance.toFixed(2) + ')';
+          overlayStatus.style.background = 'rgba(239,68,68,0.6)';
         } else {
-          overlayStatus.innerText            = 'ไม่รู้จัก (' + best.distance.toFixed(2) + ')';
-          overlayStatus.style.background     = 'rgba(239,68,68,0.6)';
+          overlayStatus.innerText        = 'มองกล้องเพื่อสแกน';
+          overlayStatus.style.background = 'rgba(0,0,0,0.65)';
         }
       }
-    }, 500);
+      await sleep(120);
+    }
   }
 
   function findBestMatch(queryDesc) {
@@ -701,20 +801,10 @@
     closeLeave();
     confirmModal.style.display = 'none';
     currentMatch = null;
-    if (scanInterval) clearInterval(scanInterval);
-
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(t => t.stop());
-      video.srcObject = null;
-    }
-    video.classList.remove('active');
-    document.getElementById('scanLine').classList.remove('active');
-
-    mainStatus.innerText    = '✅ ระบบพร้อมใช้งาน';
-    mainStatus.style.color  = '#34d399';
-    overlayStatus.innerText = 'รอโหลด...';
-    overlayStatus.style.background = 'rgba(0,0,0,0.65)';
-    btnStart.style.display  = 'inline-block';
+    mainStatus.innerText   = '✅ กำลังสแกน...';
+    mainStatus.style.color = '#34d399';
+    // กลับไปสแกนต่อทันที (หน่วงเล็กน้อยกันจับซ้ำคนเดิม)
+    setTimeout(() => { if (canScan()) startScanLoop(); }, 1500);
   }
 
   // ===== Helpers =====
